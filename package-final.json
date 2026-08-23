@@ -1,0 +1,17 @@
+{
+  "name": "max-uchet-bot-gaina",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node bot.js",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.5.10"
+  },
+  "devDependencies": {
+    "wrangler": "^4.125.0"
+  }
+}
