@@ -68,6 +68,12 @@ replaceOnce(
   'concise and chat focus'
 );
 
+replaceOnce(
+  'function isGroup(message) { const t = String(message?.recipient?.chat_type || message?.recipient?.type || "").toLowerCase(); return t === "chat" || t === "channel"; }',
+  'function isGroup(message) { const r = message?.recipient || {}; const t = String(r?.chat_type || r?.type || "").toLowerCase(); if (t === "chat" || t === "channel") return true; return r?.chat_id != null && r?.user_id == null; }',
+  'robust group detection'
+);
+
 const maxRequestAnchor = [
   'async function maxRequest(path, options = {}) {',
   '  const r = await requestJson(`${MAX_API}${path}`, {',
@@ -140,6 +146,12 @@ replaceOnce(
   'if (u?.chat_id != null) { knownGroups.delete(String(u.chat_id)); state.knownGroupCount = knownGroups.size; }',
   'if (u?.chat_id != null) { knownGroups.delete(String(u.chat_id)); state.knownGroupCount = knownGroups.size; await persistKnownChats(); }',
   'persist removed chat'
+);
+
+replaceOnce(
+  'if (["message_created","message_edited"].includes(type)) {\n    const m = u?.message; if (!m || m?.sender?.is_bot) return;\n    if (isGroup(m)) await handleGroupMessage(m); else await handlePrivate(m);\n  }',
+  'if (["message_created","message_edited"].includes(type)) {\n    const m = u?.message; if (!m || m?.sender?.is_bot) return;\n    const eventChatId = u?.chat_id ?? m?.recipient?.chat_id;\n    if (isGroup(m) || (eventChatId != null && m?.recipient?.user_id == null)) {\n      if (eventChatId != null) await rememberGroup(eventChatId);\n      return;\n    }\n    await handlePrivate(m);\n  }',
+  'register every group message'
 );
 
 replaceOnce(
