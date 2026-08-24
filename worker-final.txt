@@ -1,8 +1,12 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v26";
-const DEFAULT_STATE_URL = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/state";
+// ВАЖНО: это постоянное имя production-экземпляра.
+// Больше не меняем его при обычных обновлениях, чтобы не терять Durable Object storage.
+const CONTAINER_INSTANCE = "production";
+const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
+const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
+const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -13,9 +17,10 @@ export class MaxBotContainer extends Container {
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     REPORT_USER_ID: env.REPORT_USER_ID || "",
-    WATCH_CHAT_IDS: env.WATCH_CHAT_IDS || "-77765742260432",
+    WATCH_CHAT_IDS: env.WATCH_CHAT_IDS || "",
     ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
     STATE_URL: env.STATE_URL || DEFAULT_STATE_URL,
+    MAX_WEBHOOK_URL: env.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
     PORT: "3000",
   };
 
@@ -29,16 +34,55 @@ export class MaxBotContainer extends Container {
     return { ok: true, count: safe.length };
   }
 
-  async getPollMarker() {
-    return { marker: (await this.ctx.storage.get("poll_marker")) ?? null };
+  async rememberChat(chatId, title = null) {
+    if (chatId == null) return { ok: false };
+    const id = String(chatId);
+    const chats = await this.getKnownChats();
+    const next = chats.filter((x) => String(x?.chat_id) !== id);
+    next.push({
+      chat_id: id,
+      title: title || chats.find((x) => String(x?.chat_id) === id)?.title || `чат ${id}`,
+      lastSeenAt: Date.now(),
+    });
+    await this.ctx.storage.put("known_chats", next.slice(-500));
+    return { ok: true, count: next.length };
   }
 
-  async setPollMarker(value) {
-    const marker = Number(value?.marker);
-    if (!Number.isFinite(marker)) return { ok: false, marker: null };
-    await this.ctx.storage.put("poll_marker", marker);
-    return { ok: true, marker };
+  async forgetChat(chatId) {
+    if (chatId == null) return { ok: true };
+    const id = String(chatId);
+    const chats = await this.getKnownChats();
+    const next = chats.filter((x) => String(x?.chat_id) !== id);
+    await this.ctx.storage.put("known_chats", next);
+    return { ok: true, count: next.length };
   }
+}
+
+function chatIdFromUpdate(update) {
+  return update?.chat_id ?? update?.message?.recipient?.chat_id ?? null;
+}
+
+async function processWebhook(runtimeEnv, update) {
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+  const chatId = chatIdFromUpdate(update);
+  const type = String(update?.update_type || "");
+
+  if (chatId != null) {
+    if (type === "bot_removed") {
+      await container.forgetChat(chatId);
+    } else {
+      const title = update?.title || update?.chat?.title || null;
+      await container.rememberChat(chatId, title);
+    }
+  }
+
+  // Передаём событие в контейнер для обычной обработки.
+  // В группах сам бот ничего не отправляет: это дополнительно заблокировано внутри bot.js.
+  await container.fetch(new Request("http://container/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update || {}),
+  }));
 }
 
 async function pingContainer(runtimeEnv) {
@@ -48,24 +92,40 @@ async function pingContainer(runtimeEnv) {
 }
 
 export default {
-  async fetch(request, runtimeEnv) {
+  async fetch(request, runtimeEnv, ctx) {
     try {
       const url = new URL(request.url);
       const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 
-      if (url.pathname === "/state" || url.pathname === "/marker") {
+      if (url.pathname === "/max-webhook" && request.method === "POST") {
+        let update = {};
+        try {
+          update = await request.json();
+        } catch {
+          return new Response("Bad JSON", { status: 400 });
+        }
+
+        // MAX требует быстрый 200. Сохранение chat_id и обработка идут после ответа.
+        ctx.waitUntil(
+          processWebhook(runtimeEnv, update).catch((error) =>
+            console.error("MAX webhook processing error", error),
+          ),
+        );
+        return Response.json({ ok: true });
+      }
+
+      if (url.pathname === "/state") {
         if (request.headers.get("X-Internal-Auth") !== runtimeEnv.MAX_BOT_TOKEN) {
           return new Response("Forbidden", { status: 403 });
         }
 
-        if (url.pathname === "/state") {
-          if (request.method === "GET") return Response.json(await container.getKnownChats());
-          if (request.method === "POST") return Response.json(await container.setKnownChats(await request.json()));
+        if (request.method === "GET") {
+          return Response.json(await container.getKnownChats());
         }
 
-        if (url.pathname === "/marker") {
-          if (request.method === "GET") return Response.json(await container.getPollMarker());
-          if (request.method === "POST") return Response.json(await container.setPollMarker(await request.json()));
+        if (request.method === "POST") {
+          const chats = await request.json();
+          return Response.json(await container.setKnownChats(chats));
         }
 
         return new Response("Method not allowed", { status: 405 });
