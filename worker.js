@@ -1,1 +1,37 @@
-Unsupported Media Type
+import { env } from "cloudflare:workers";
+import { Container, getContainer } from "@cloudflare/containers";
+
+export class MaxBotContainer extends Container {
+  defaultPort = 3000;
+  sleepAfter = "10m";
+  envVars = {
+    MAX_BOT_TOKEN: env.MAX_BOT_TOKEN,
+    OPENAI_API_KEY: env.OPENAI_API_KEY,
+    OPENAI_MODEL: env.OPENAI_MODEL || "gpt-5.6-terra",
+    PORT: "3000",
+  };
+}
+
+async function pingContainer(runtimeEnv) {
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, "main");
+  const response = await container.fetch(new Request("http://container/health"));
+  await response.arrayBuffer();
+}
+
+export default {
+  async fetch(_request, runtimeEnv) {
+    try {
+      const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, "main");
+      return await container.fetch(new Request("http://container/health"));
+    } catch (error) {
+      console.error("Container start error", error);
+      return new Response(`Container error: ${error?.message || error}`, { status: 500 });
+    }
+  },
+
+  async scheduled(_controller, runtimeEnv, ctx) {
+    ctx.waitUntil(
+      pingContainer(runtimeEnv).catch((error) => console.error("Keepalive error", error)),
+    );
+  },
+};
