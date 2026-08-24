@@ -12,7 +12,9 @@
       "class_name": "MaxBotContainer",
       "image": "./Dockerfile",
       "instance_type": "lite",
-      "max_instances": 2
+      "max_instances": 2,
+      "rollout_step_percentage": [100],
+      "rollout_active_grace_period": 0
     }
   ],
   "durable_objects": {
