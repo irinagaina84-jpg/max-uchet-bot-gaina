@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v25";
+const CONTAINER_INSTANCE = "main-v26";
 const DEFAULT_STATE_URL = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/state";
 
 export class MaxBotContainer extends Container {
@@ -28,6 +28,17 @@ export class MaxBotContainer extends Container {
     await this.ctx.storage.put("known_chats", safe);
     return { ok: true, count: safe.length };
   }
+
+  async getPollMarker() {
+    return { marker: (await this.ctx.storage.get("poll_marker")) ?? null };
+  }
+
+  async setPollMarker(value) {
+    const marker = Number(value?.marker);
+    if (!Number.isFinite(marker)) return { ok: false, marker: null };
+    await this.ctx.storage.put("poll_marker", marker);
+    return { ok: true, marker };
+  }
 }
 
 async function pingContainer(runtimeEnv) {
@@ -42,18 +53,19 @@ export default {
       const url = new URL(request.url);
       const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 
-      if (url.pathname === "/state") {
+      if (url.pathname === "/state" || url.pathname === "/marker") {
         if (request.headers.get("X-Internal-Auth") !== runtimeEnv.MAX_BOT_TOKEN) {
           return new Response("Forbidden", { status: 403 });
         }
 
-        if (request.method === "GET") {
-          return Response.json(await container.getKnownChats());
+        if (url.pathname === "/state") {
+          if (request.method === "GET") return Response.json(await container.getKnownChats());
+          if (request.method === "POST") return Response.json(await container.setKnownChats(await request.json()));
         }
 
-        if (request.method === "POST") {
-          const chats = await request.json();
-          return Response.json(await container.setKnownChats(chats));
+        if (url.pathname === "/marker") {
+          if (request.method === "GET") return Response.json(await container.getPollMarker());
+          if (request.method === "POST") return Response.json(await container.setPollMarker(await request.json()));
         }
 
         return new Response("Method not allowed", { status: 405 });
