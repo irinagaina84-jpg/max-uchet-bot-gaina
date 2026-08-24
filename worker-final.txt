@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v8";
+const CONTAINER_INSTANCE = "main-v9";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
