@@ -1,6 +1,8 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
+const CONTAINER_INSTANCE = "main-v2";
+
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
   sleepAfter = "10m";
@@ -13,7 +15,7 @@ export class MaxBotContainer extends Container {
 }
 
 async function pingContainer(runtimeEnv) {
-  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, "main");
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
   const response = await container.fetch(new Request("http://container/health"));
   await response.arrayBuffer();
 }
@@ -21,7 +23,7 @@ async function pingContainer(runtimeEnv) {
 export default {
   async fetch(_request, runtimeEnv) {
     try {
-      const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, "main");
+      const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
       return await container.fetch(new Request("http://container/health"));
     } catch (error) {
       console.error("Container start error", error);
