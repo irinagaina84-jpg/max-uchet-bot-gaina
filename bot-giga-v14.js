@@ -14,7 +14,7 @@ const GIGA_SCOPE = (process.env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS").trim();
 const GIGA_MODEL = (process.env.GIGACHAT_MODEL || "GigaChat-3-Ultra").trim();
 const PORT = Number(process.env.PORT || 3000);
 const TZ_OFFSET_MINUTES = Number(process.env.ACCOUNTING_TZ_OFFSET_MINUTES || 300);
-const SEEDED_CHAT_IDS = (process.env.WATCH_CHAT_IDS || "-77765742260432").split(",").map((x) => x.trim()).filter(Boolean);
+const SEEDED_CHAT_IDS = (process.env.WATCH_CHAT_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);
 
 function cleanKey(v) {
   let s = String(v || "").trim();
@@ -177,352 +177,275 @@ async function gigaChat(messages) {
 }
 
 async function gigaJson(messages, schema) {
-  const data = await gigaRaw({
-    messages,
-    stream: false,
-    response_format: { type: "json_schema", schema, strict: true },
-  });
-  const content = String(data?.choices?.[0]?.message?.content || "").trim();
-  try { return JSON.parse(content); }
-  catch { throw new Error(`GigaChat вернул не JSON: ${content.slice(0, 300)}`); }
-}
-
-async function uploadImage(inputBuffer, inputType) {
-  let buffer = inputBuffer;
-  let contentType = String(inputType || "image/jpeg").toLowerCase();
-  if (!["image/jpeg","image/png","image/tiff","image/bmp"].includes(contentType)) {
-    buffer = await sharp(buffer, { animated: false }).rotate().flatten({ background: "white" }).jpeg({ quality: 95 }).toBuffer();
-    contentType = "image/jpeg";
+  const data = await gigaRaw({ messages, stream: false, response_format: { type: "json_schema", json_schema: { name: "result", strict: true, schema } } });
+  const text = String(data?.choices?.[0]?.message?.content || "{}").trim();
+  try { return JSON.parse(text); } catch {
+    const m = text.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]);
+    throw new Error(`GigaChat returned non-JSON: ${text.slice(0, 300)}`);
   }
-  const token = await getGigaToken(false);
-  const boundary = `----maxbot${randomUUID().replaceAll("-", "")}`;
-  const ext = contentType === "image/png" ? "png" : contentType === "image/tiff" ? "tiff" : contentType === "image/bmp" ? "bmp" : "jpg";
-  const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="purpose"\r\n\r\ngeneral\r\n--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="release.${ext}"\r\nContent-Type: ${contentType}\r\n\r\n`);
-  const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
-  const r = await requestJson(`${GIGA_API}/v1/files`, { method: "POST", headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "Content-Type": `multipart/form-data; boundary=${boundary}` }, body: Buffer.concat([head, buffer, tail]), timeout: 120000 });
-  if (!r.data?.id) throw new Error("GigaChat file upload without id");
-  return r.data.id;
 }
 
-function imageUrls(message) {
-  const a = Array.isArray(message?.body?.attachments) ? message.body.attachments : [];
-  return a.filter((x) => x?.type === "image").map((x) => x?.payload?.url).filter((x) => typeof x === "string" && /^https?:\/\//i.test(x));
-}
-function mid(message) { return String(message?.body?.mid || message?.timestamp || ""); }
-function sender(message) { return String(message?.sender?.name || message?.sender?.first_name || message?.sender?.username || message?.sender?.user_id || ""); }
-function isGroup(message) { const t = String(message?.recipient?.chat_type || message?.recipient?.type || "").toLowerCase(); return t === "chat" || t === "channel"; }
+const DOMAIN_RULES = `Ты — приватный аналитик владельца бизнеса по продаже морских контейнеров.
+Твоя задача — понимать смысл рабочей переписки целиком, а не искать отдельные слова.
 
-const DOMAIN_RULES = `
-Ты аналитик реальной переписки по продаже и выдаче морских контейнеров. Понимай смысл диалога целиком, включая короткие ответы «да», «эти 2», «не считать», «это Шубино», «всё выдали», ответы на предыдущие сообщения, исправления и отмены.
+Главная схема учёта: КЛИЕНТ → ТЕРМИНАЛ → ТИП (20 DC/40 HC) → КОЛИЧЕСТВО → НОМЕРА.
+Поставщик — отдельное поле и никогда автоматически не является клиентом или терминалом.
 
-РОЛИ СУЩНОСТЕЙ НЕЛЬЗЯ ПУТАТЬ:
-- Клиенты/проекты: Взлёт (Взлет), Констэво, Атлас и другие покупатели, которые явно следуют из переписки.
-- Поставщики: Ming Way / MING WAY / Май Вэй, Александра, Фахрат / Goldcontainer / Голдконтейнер, Наталья / Мой контейнер, Просто Контейнер, Амиди и другие поставщики.
-- Терминалы/локации: Шубино, Чехов, Сухой порт, Купавна, Союз Плюс, СВС / Союз Восток, Тетрис Юг и другие площадки.
-Это подсказки классификации, а не жесткое ограничение. Если переписка явно говорит иначе — следуй фактам.
+Критически важно различать:
+- release — релиз/заявка/бронь/слот/окно, но ещё не подтверждённая фактическая выдача;
+- confirmed_issue — фактически выдано/забрано/выпущено/увезено;
+- cancellation — отмена/снятие/откат/«не считать»;
+- correction — исправление предыдущих данных/замена машины/номера/клиента/терминала/типа/количества;
+- payment — оплата/перевод/полученные деньги; не считать выдачей;
+- context — важный контекст, который сам по себе не меняет количество выданных.
 
-Главный учет: КЛИЕНТ -> ТЕРМИНАЛ -> ТИП 20DC/40HC -> КОЛИЧЕСТВО -> НОМЕРА.
-Поставщик — отдельное поле и не заменяет клиента или терминал.
 Релиз, бронь, заявка, окно выдачи — НЕ факт выдачи.
 Факт выдачи: только когда по смыслу подтверждено «выдали», «забрали», «выпустили», «увезли», «отгрузили», «получили» или равнозначно.
-Поздняя отмена/исправление/перенос имеет приоритет над прежним сообщением.
-Одинаковый номер контейнера не задваивать.
-Если клиент не определен надежно — client=null. Не выдумывать.
-`;
+Поздняя отмена или исправление имеет приоритет над ранним сообщением.
+Один номер контейнера нельзя считать дважды, если это тот же физический контейнер.
+Если сообщение содержит противоречие, не выдумывай — сохрани uncertain=true и объясни в notes.
+
+Читай разговор по смыслу: «там ещё 2 надо», «эти два сняла», «это не Май Вэй, это Просто Контейнер», «это тест, не учитывай» должны менять трактовку предыдущих сообщений.`;
 
 const EVENT_SCHEMA = {
   type: "object",
   properties: {
-    chat_topic: { type: "string", description: "Кратко, о чем идет переписка в этом фрагменте" },
-    events: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          event_type: { type: "string", enum: ["release", "confirmed_issue", "cancellation", "correction", "transfer", "booking", "payment", "question", "other"] },
-          client: { type: ["string", "null"] },
-          supplier: { type: ["string", "null"] },
-          terminal: { type: ["string", "null"] },
-          container_type: { type: ["string", "null"], description: "20DC, 40HC или null" },
-          quantity: { type: ["integer", "null"] },
-          container_numbers: { type: "array", items: { type: "string" } },
-          status: { type: "string", enum: ["confirmed", "unconfirmed", "cancelled", "corrected", "informational"] },
-          refers_to: { type: ["string", "null"], description: "К чему относится отмена/уточнение, если понятно" },
-          meaning: { type: "string", description: "Человеческое объяснение смысла события" },
-          evidence: { type: "string", description: "Короткая опора на смысл переписки без длинной цитаты" },
-          confidence: { type: "string", enum: ["high", "medium", "low"] }
-        },
-        required: ["event_type","client","supplier","terminal","container_type","quantity","container_numbers","status","refers_to","meaning","evidence","confidence"],
-        additionalProperties: false
-      }
-    }
-  },
-  required: ["chat_topic", "events"],
-  additionalProperties: false
+    events: { type: "array", items: { type: "object", properties: {
+      event_type: { type: "string", enum: ["release","confirmed_issue","cancellation","correction","payment","context"] },
+      customer: { type: ["string","null"] }, supplier: { type: ["string","null"] }, terminal: { type: ["string","null"] },
+      container_type: { type: ["string","null"] }, quantity: { type: ["integer","null"] }, container_numbers: { type: "array", items: { type: "string" } },
+      amount_rub: { type: ["number","null"] }, release_id: { type: ["string","null"] },
+      effective_time_ms: { type: ["integer","null"] }, source_message_ids: { type: "array", items: { type: "string" } },
+      uncertain: { type: "boolean" }, notes: { type: ["string","null"] }
+    }, required: ["event_type","customer","supplier","terminal","container_type","quantity","container_numbers","amount_rub","release_id","effective_time_ms","source_message_ids","uncertain","notes"], additionalProperties: false } }
+  }, required: ["events"], additionalProperties: false
 };
 
+function normalizeText(s) { return String(s || "").replace(/\s+/g, " ").trim(); }
+function msgText(m) { return String(m?.body?.text || m?.text || ""); }
+function msgId(m) { return String(m?.body?.mid || m?.mid || m?.id || ""); }
+function msgTime(m) { return Number(m?.timestamp || m?.body?.timestamp || 0); }
+function senderName(m) { const s = m?.sender || {}; return [s.first_name, s.last_name].filter(Boolean).join(" ") || s.username || String(s.user_id || ""); }
+function isGroup(message) { const t = String(message?.recipient?.chat_type || message?.recipient?.type || "").toLowerCase(); return t === "chat" || t === "channel"; }
+
 async function chatInfo(chatId) {
-  const id = String(chatId);
-  try {
-    const c = await maxRequest(`/chats/${encodeURIComponent(id)}`, { timeout: 15000 });
-    const meta = { title: c?.title || `чат ${id}`, lastSeenAt: Date.now() };
-    knownGroups.set(id, meta); state.knownGroupCount = knownGroups.size;
-    return meta;
-  } catch {
-    return knownGroups.get(id) || { title: `чат ${id}`, lastSeenAt: Date.now() };
-  }
+  try { const c = await maxRequest(`/chats/${encodeURIComponent(chatId)}`, { timeout: 15000 }); return { title: c?.title || `чат ${chatId}` }; }
+  catch { return { title: `чат ${chatId}` }; }
 }
 
 async function rememberGroup(chatId) {
   if (chatId == null) return null;
-  const info = await chatInfo(String(chatId));
-  state.lastGroupChatId = String(chatId); state.lastGroupName = info.title;
+  const info = await chatInfo(chatId);
+  knownGroups.set(String(chatId), { title: info.title, lastSeenAt: Date.now() });
+  state.knownGroupCount = knownGroups.size; state.lastGroupChatId = String(chatId); state.lastGroupName = info.title;
   return info;
 }
 
-async function analyzeImageMessage(message, chatTitle, nearby = "") {
-  const urls = imageUrls(message); if (!urls.length) return "";
-  const key = mid(message) || urls.join("|"); if (imageCache.has(key)) return imageCache.get(key);
-  const messages = [{ role: "system", content: DOMAIN_RULES }];
-  for (let i = 0; i < Math.min(urls.length, 8); i++) {
-    const f = await download(urls[i]);
-    const id = await uploadImage(f.buffer, f.contentType);
-    messages.push({ role: "user", content: i === 0 ? `Прочитай скрин/релиз из чата «${chatTitle}». Контекст рядом: ${nearby || "нет"}. Определи отдельно клиента, поставщика, терминал, тип, количество, номера, даты/окно и является ли это только релизом либо есть факт выдачи. Не путай MING WAY с терминалом, а Шубино с клиентом без явного подтверждения.` : "Продолжение того же релиза.", attachments: [id] });
-  }
-  const answer = await gigaChat(messages); imageCache.set(key, answer); return answer;
+function replyInfo(m) {
+  const r = m?.body?.reply_to || m?.body?.reply || m?.reply_to || null;
+  if (!r) return "";
+  return normalizeText(`Ответ на: ${r?.body?.text || r?.text || ""}`);
 }
 
-function dayBounds(offsetDays = 0) {
-  const off = TZ_OFFSET_MINUTES * 60000;
-  const local = new Date(Date.now() + off);
-  const startLocal = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + offsetDays, 0, 0, 0, 0);
-  const start = startLocal - off; return { start, end: start + 86400000 - 1 };
+function attachments(m) { return Array.isArray(m?.body?.attachments) ? m.body.attachments : Array.isArray(m?.attachments) ? m.attachments : []; }
+function imageUrls(m) {
+  const urls = [];
+  for (const a of attachments(m)) {
+    const type = String(a?.type || a?.payload?.type || "").toLowerCase();
+    if (!["image","photo"].includes(type)) continue;
+    const p = a?.payload || a;
+    const candidates = [p?.url, p?.photo?.url, p?.photo?.full_url, p?.photos?.large?.url, p?.photos?.medium?.url, p?.photos?.small?.url, p?.token?.url];
+    for (const u of candidates) if (typeof u === "string" && /^https?:\/\//.test(u)) urls.push(u);
+  }
+  return [...new Set(urls)];
+}
+
+function historyContextLine(m) {
+  const time = new Date(msgTime(m) || Date.now()).toISOString();
+  return `[${time}] ${senderName(m)} | id=${msgId(m)} | ${replyInfo(m)} ${normalizeText(msgText(m))}`.trim();
+}
+
+async function convertImage(buffer, contentType) {
+  try {
+    if (contentType === "image/webp" || contentType === "image/avif" || contentType === "image/heic" || contentType === "image/heif") {
+      return { buffer: await sharp(buffer).jpeg({ quality: 88 }).toBuffer(), mime: "image/jpeg" };
+    }
+  } catch (e) { console.error("convertImage", errText(e)); }
+  return { buffer, mime: ["image/jpeg","image/png"].includes(contentType) ? contentType : "image/jpeg" };
+}
+
+async function describeImage(url) {
+  if (imageCache.has(url)) return imageCache.get(url);
+  const p = (async () => {
+    const dl = await download(url); const converted = await convertImage(dl.buffer, dl.contentType);
+    const b64 = converted.buffer.toString("base64");
+    const data = await gigaRaw({ messages: [{ role: "user", content: [
+      { type: "text", text: "Прочитай изображение как рабочий документ по контейнерам. Извлеки весь значимый текст: клиент/получатель, поставщик, терминал, тип 20DC/40HC, номера контейнеров, количество, даты/окна, номер релиза, статус. Не придумывай." },
+      { type: "image_url", image_url: { url: `data:${converted.mime};base64,${b64}` } }
+    ] }], stream: false });
+    return String(data?.choices?.[0]?.message?.content || "").trim();
+  })(); imageCache.set(url, p); return p;
 }
 
 async function fetchHistory(chatId, since, until = Date.now(), max = 500) {
-  const out = []; const seen = new Set(); let upper = until;
+  const out = []; let before = until;
   for (let page = 0; page < 5 && out.length < max; page++) {
-    const p = new URLSearchParams({ chat_id: String(chatId), count: "100" });
-    if (upper != null) p.set("from", String(upper));
-    if (since != null) p.set("to", String(since));
-    const d = await maxRequest(`/messages?${p}`, { timeout: 45000 });
-    const batch = Array.isArray(d?.messages) ? d.messages : [];
-    if (!batch.length) break;
-    let oldest = Infinity;
-    for (const m of batch) {
-      const id = mid(m) || `${m?.timestamp}-${sender(m)}`;
-      if (seen.has(id)) continue; seen.add(id);
-      const ts = Number(m?.timestamp || 0);
-      if (since != null && ts < since) continue;
-      if (ts > until) continue;
-      out.push(m); if (ts > 0) oldest = Math.min(oldest, ts);
-    }
-    if (batch.length < 100 || !Number.isFinite(oldest)) break;
-    upper = oldest - 1; if (since != null && upper < since) break;
+    const q = new URLSearchParams({ chat_id: String(chatId), count: "100", to: String(before) });
+    if (since) q.set("from", String(since));
+    const d = await maxRequest(`/messages?${q}`, { timeout: 30000 });
+    const items = d?.messages || d?.items || [];
+    if (!items.length) break;
+    out.push(...items); const oldest = Math.min(...items.map(msgTime).filter(Boolean));
+    if (!oldest || items.length < 100 || (since && oldest <= since)) break; before = oldest - 1;
   }
-  out.sort((a,b) => Number(a?.timestamp||0)-Number(b?.timestamp||0)); return out;
+  return out.filter((m) => (!since || msgTime(m) >= since) && msgTime(m) <= until).sort((a,b) => msgTime(a)-msgTime(b)).slice(-max);
 }
 
-function fmtTs(ts) {
-  const d = new Date(Number(ts || 0) + TZ_OFFSET_MINUTES * 60000);
-  return `${String(d.getUTCDate()).padStart(2,"0")}.${String(d.getUTCMonth()+1).padStart(2,"0")} ${String(d.getUTCHours()).padStart(2,"0")}:${String(d.getUTCMinutes()).padStart(2,"0")}`;
+async function extractChunk(chatTitle, rows) {
+  const imageTexts = [];
+  for (const m of rows) for (const url of imageUrls(m)) {
+    try { imageTexts.push(`[message_id=${msgId(m)}] IMAGE: ${await describeImage(url)}`); }
+    catch (e) { imageTexts.push(`[message_id=${msgId(m)}] IMAGE_ERROR: ${errText(e)}`); }
+  }
+  const transcript = rows.map(historyContextLine).join("\n");
+  const content = `Название рабочего чата: ${chatTitle}\n\nХронология сообщений:\n${transcript}\n\nРезультат чтения картинок:\n${imageTexts.join("\n") || "нет"}`;
+  const parsed = await gigaJson([
+    { role: "system", content: `${DOMAIN_RULES}\n\nПреобразуй фрагмент рабочей переписки в журнал событий. Поздние реплики могут отменять или исправлять ранние. Используй message_id как источник. Один человеческий смысловой эпизод может включать несколько сообщений.` },
+    { role: "user", content }
+  ], EVENT_SCHEMA);
+  return { events: parsed?.events || [], imageCount: imageTexts.length };
 }
 
-async function buildTranscript(title, messages) {
-  const lines = []; let images = 0;
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    const text = String(m?.body?.text || "").trim();
-    const prefix = `[${fmtTs(m?.timestamp)}] ${sender(m)}:`;
-    if (text) lines.push(`${prefix} ${text}`);
-    if (imageUrls(m).length && images < 24) {
-      images++;
-      const nearby = messages.slice(Math.max(0,i-4), Math.min(messages.length,i+5)).map((x)=>String(x?.body?.text||"").trim()).filter(Boolean).join(" | ");
-      try { lines.push(`${prefix} [КАРТИНКА/РЕЛИЗ] ${await analyzeImageMessage(m, title, nearby)}`); }
-      catch (e) { lines.push(`${prefix} [КАРТИНКА НЕ ПРОЧИТАНА: ${errText(e)}]`); }
-    }
-  }
-  state.lastHistoryImages += images;
-  return lines.join("\n");
+function chunkRows(rows, size = 45, overlap = 8) {
+  const out = []; for (let i = 0; i < rows.length; i += Math.max(1, size - overlap)) out.push(rows.slice(i, i + size)); return out;
+}
+
+async function extractChat(chatId, title, start, end) {
+  const history = await fetchHistory(chatId, start, end, 500); let imageCount = 0; const events = [];
+  for (const part of chunkRows(history)) { const r = await extractChunk(title, part); imageCount += r.imageCount; events.push(...r.events); }
+  return { historyCount: history.length, imageCount, events };
 }
 
 function requestedWindow(question) {
-  const q = String(question || "").toLowerCase();
-  if (q.includes("сегодня")) return dayBounds(0);
-  if (q.includes("вчера")) return dayBounds(-1);
+  const q = question.toLowerCase(); const now = new Date();
+  const dayStart = (daysAgo = 0) => { const d = new Date(now.getTime() + TZ_OFFSET_MINUTES*60000); d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()-daysAgo); return d.getTime()-TZ_OFFSET_MINUTES*60000; };
   if (q.includes("за весь чат") || q.includes("за все время") || q.includes("за всё время") || q.includes("всего")) return { start: null, end: Date.now() };
-  return { start: Date.now() - 30 * 86400000, end: Date.now() };
-}
-
-async function extractEvents(question, chatId, title, start, end) {
-  const history = await fetchHistory(chatId, start, end, 500);
-  state.lastHistoryMessages += history.length;
-  if (!history.length) return null;
-  const tr = await buildTranscript(title, history);
-  if (!tr.trim()) return null;
-
-  const chunks = []; const chunkSize = 15000;
-  for (let i = 0; i < tr.length; i += chunkSize) chunks.push(tr.slice(i, i + chunkSize));
-  const allEvents = [];
-  const topics = [];
-  for (let i = 0; i < chunks.length; i++) {
-    const parsed = await gigaJson([
-      { role: "system", content: DOMAIN_RULES },
-      { role: "user", content: `Запрос пользователя: «${question}».
-Это часть ${i+1}/${chunks.length} хронологической переписки чата «${title}».
-Разбери СМЫСЛ разговора. Сообщения могут ссылаться на предыдущие реплики и картинки. Короткое «эти 2 Шубино» может исправлять предыдущий терминал; «не считать» отменяет ранее обсуждаемое; «всё выдали» может подтверждать выдачу предыдущего релиза. Извлеки события, сохраняя такие связи в refers_to/meaning.
-Не фильтруй только по словам из вопроса: сначала пойми, о чем разговаривают, потом выдели события, которые помогут ответить.
-
-ПЕРЕПИСКА:\n${chunks[i]}` }
-    ], EVENT_SCHEMA);
-    if (parsed?.chat_topic) topics.push(parsed.chat_topic);
-    if (Array.isArray(parsed?.events)) allEvents.push(...parsed.events);
-  }
-  return { chat_id: String(chatId), chat_title: title, topics, events: allEvents };
+  if (q.includes("вчера")) return { start: dayStart(1), end: dayStart(0)-1 };
+  if (q.includes("сегодня")) return { start: dayStart(0), end: Date.now() };
+  return { start: Date.now() - 30*86400000, end: Date.now() };
 }
 
 function compactEvents(extractions) {
-  const out = [];
-  for (const x of extractions) {
-    if (!x) continue;
-    out.push({ chat_title: x.chat_title, topics: x.topics, events: x.events });
-  }
-  return out;
+  return extractions.flatMap((x) => x.events.map((e) => ({ ...e, chat_title: x.title, chat_id: x.chatId })));
 }
 
-async function answerWorkQuestion(question) {
-  const { start, end } = requestedWindow(question);
-  const groups = [...knownGroups.entries()];
-  if (!groups.length) return "Я пока не вижу ни одного рабочего чата. Добавь меня администратором в чат и оставь там любое новое сообщение — дальше я сам буду его учитывать.";
+function isExactLookupQuestion(text) {
+  const t = normalizeText(text);
+  return /(?:релиз|release|номер|контейнер|контейнера|контейнеру|найди|откуда|где).*\b[A-ZА-Я0-9-]{5,}\b/i.test(t) || /\b[A-Z]{4}\d{6,7}\b/i.test(t);
+}
 
-  state.lastHistoryMessages = 0; state.lastHistoryImages = 0; state.lastHistoryChats = 0; state.lastExtractedEvents = 0;
-  const extractions = [];
-  for (const [id, cached] of groups) {
-    const meta = await chatInfo(id);
+function lookupTerms(text) {
+  const set = new Set();
+  for (const m of normalizeText(text).matchAll(/\b[A-ZА-Я]{0,6}\d[A-ZА-Я0-9-]{4,}\b/gi)) set.add(m[0].toUpperCase());
+  for (const m of normalizeText(text).matchAll(/(?:релиз|release|номер)\s*[№#:]?\s*([A-ZА-Я0-9-]{3,})/gi)) set.add(m[1].toUpperCase());
+  return [...set];
+}
+
+async function exactLookup(question) {
+  const terms = lookupTerms(question);
+  if (!terms.length) return null;
+  const hits = [];
+  for (const [chatId, meta] of knownGroups) {
     try {
-      const parsed = await extractEvents(question, id, meta.title || cached.title, start, end);
-      if (parsed) {
-        extractions.push(parsed);
-        state.lastHistoryChats += 1;
-        state.lastExtractedEvents += parsed.events.length;
+      const history = await fetchHistory(chatId, null, Date.now(), 500);
+      for (const m of history) {
+        const hay = `${msgText(m)} ${replyInfo(m)}`.toUpperCase();
+        if (terms.some((t) => hay.includes(t))) hits.push({ chatId, title: meta.title, message: m });
       }
-    } catch (e) {
-      state.lastError = `chat ${id}: ${errText(e)}`;
-    }
+    } catch (e) { state.lastError = `lookup ${chatId}: ${errText(e)}`; }
   }
-  if (!extractions.length) return "В подключённых чатах за этот период я не нашёл сообщений для анализа.";
-
-  const data = compactEvents(extractions);
-  const dialogContext = privateDialog.slice(-6).map((x) => `${x.role}: ${x.text}`).join("\n");
+  if (!hits.length) return `По истории доступных рабочих чатов точного совпадения для «${terms.join(", ")}» не найдено.`;
+  hits.sort((a,b) => msgTime(a.message)-msgTime(b.message));
+  const ctx = [];
+  for (const h of hits.slice(-10)) {
+    const neighborhood = await fetchHistory(h.chatId, Math.max(0, msgTime(h.message)-10*60*1000), msgTime(h.message)+10*60*1000, 80);
+    ctx.push(`ЧАТ: ${h.title} (${h.chatId})\n${neighborhood.map(historyContextLine).join("\n")}`);
+  }
   const answer = await gigaChat([
-    { role: "system", content: `${DOMAIN_RULES}\n
-СТИЛЬ ОТВЕТА:
-Пиши как рабочую сводку для владельца бизнеса: коротко, понятно, без канцелярита и без объяснений про API/доступ.
-Сразу отвечай на вопрос. Не пиши «недостаточно данных», если в событиях есть хоть что-то полезное.
-Если вопрос «выпиши по Взлёту» — сначала дай подтвержденный факт выдачи по Взлёту, затем отдельно «Только релизы / ещё не подтверждено».
-Формат по умолчанию:
-«Взлёт — выдано: N шт.»
-«• Чехов — 6 × 20 DC»
-«• Шубино — 2 × 20 DC»
-Потом при необходимости номера.
-Не перечисляй технические chat_id.
-Не называй Shubino клиентом. Не называй MING WAY терминалом: MING WAY — поставщик, если переписка не доказывает иное.
-Если отмена изменила итог, просто покажи уже исправленный итог и коротко укажи «учтена отмена …».
-` },
-    { role: "user", content: `Текущий вопрос: «${question}».
-Контекст последних вопросов пользователя в личке:\n${dialogContext || "нет"}
-
-Ниже уже структурированное понимание переписок всех доступных чатов. Сведи события хронологически, применив corrections/cancellations/transfers к более ранним событиям. Один номер не считай дважды. Релиз без confirmed_issue не включай в выдано.
-
-ДАННЫЕ:\n${JSON.stringify(data)}` }
+    { role: "system", content: `${DOMAIN_RULES}\n\nЭто точный поиск по идентификатору. Сначала сообщи, где он реально найден: название чата, дата/время, автор, исходный текст. Затем объясни только то, что подтверждается ближайшим контекстом. НИКОГДА не приписывай этому номеру поставщика, клиента, терминал, тип, количество или факт выдачи из другого сообщения, если связь не подтверждена явным текстом/ответом/контекстом. Если есть только голая строка «Релиз N», так и скажи: «Других подтверждающих данных к этому релизу нет».` },
+    { role: "user", content: `Запрос: ${question}\n\nТочные совпадения и контекст:\n${ctx.join("\n\n---\n\n")}` }
   ]);
-
-  privateDialog.push({ role: "user", text: question }, { role: "assistant", text: answer });
-  if (privateDialog.length > 12) privateDialog.splice(0, privateDialog.length - 12);
   return answer;
 }
 
-async function sendUser(userId, text) {
-  for (const part of String(text).match(/[\s\S]{1,3900}/g) || []) {
-    await maxRequest(`/messages?user_id=${encodeURIComponent(userId)}`, { method: "POST", body: { text: part } });
+async function answerWorkQuestion(question) {
+  const { start, end } = requestedWindow(question); const extractions = [];
+  for (const [chatId, meta] of knownGroups) {
+    try { const r = await extractChat(chatId, meta.title, start, end); extractions.push({ chatId, title: meta.title, ...r }); }
+    catch (e) { state.lastError = `history ${chatId}: ${errText(e)}`; }
   }
+  state.lastHistoryMessages = extractions.reduce((s,x)=>s+x.historyCount,0); state.lastHistoryImages = extractions.reduce((s,x)=>s+x.imageCount,0); state.lastHistoryChats = extractions.length;
+  state.lastExtractedEvents = extractions.reduce((s,x)=>s+x.events.length,0);
+  if (!state.lastHistoryMessages) return "В подключённых чатах за этот период я не нашёл сообщений для анализа.";
+  const data = compactEvents(extractions);
+  const dialogContext = privateDialog.slice(-6).map((x) => `${x.role}: ${x.text}`).join("\n");
+  const answer = await gigaChat([
+    { role: "system", content: `${DOMAIN_RULES}\n\nТы отвечаешь владельцу в ЛИЧКЕ. Перед тобой не сырые сообщения, а события, извлечённые из полной хронологии нескольких рабочих чатов.\n\nПравила финального ответа:\n1) confirmed_issue увеличивает фактическую выдачу.\n2) release не включай в фактическую выдачу, пока нет подтверждения. Покажи отдельно, если это полезно.\n3) cancellation отменяет предыдущий соответствующий релиз/выдачу, если по смыслу именно это отменено.\n4) correction заменяет старые данные новыми, не создаёт дополнительную выдачу.\n5) Убирай дубли по номерам контейнеров и по смыслу одного эпизода.\n6) payment не считать контейнером.\n7) Если клиент явно не указан, не придумывай его. Название терминала/поставщика не превращай в клиента.\n8) Если пользователь называет клиента (например «по Взлёту»), фильтруй события по явной или надёжно следующей из переписки привязке к этому клиенту.\n9) Если пользователь спрашивает «сколько выдали», считай только confirmed_issue.\n10) Если просит «релизы», считай release отдельно.\n11) Ответь именно на текущий вопрос, учитывая последние уточнения личного диалога.\n\nСТИЛЬ ОТВЕТА:\nПиши как рабочую сводку для владельца бизнеса: коротко, понятно, без канцелярита и без объяснений про API/доступ.\nСразу отвечай на вопрос. Не пиши «недостаточно данных», если в событиях есть хоть что-то полезное.\nЕсли вопрос «выпиши по Взлёту» — сначала дай подтвержденный факт выдачи по Взлёту, затем отдельно «Только релизы / ещё не подтверждено».\nФормат по умолчанию:\n«Взлёт — выдано: N шт.»\n«• Чехов — 6 × 20 DC»\n«• Шубино — 2 × 20 DC»\nПотом при необходимости номера.\nНе перечисляй технические chat_id.\nНе называй Shubino клиентом. Не называй MING WAY терминалом: MING WAY — поставщик, если переписка не доказывает иное.\nЕсли отмена изменила итог, просто покажи уже исправленный итог и коротко укажи «учтена отмена …».` },
+    { role: "user", content: `Текущий вопрос: «${question}».\nПоследний контекст личного диалога:\n${dialogContext || "нет"}\n\nСобытия из рабочих чатов:\n${JSON.stringify(data)}` }
+  ]);
+  privateDialog.push({ role: "user", text: question }, { role: "assistant", text: answer }); if (privateDialog.length > 12) privateDialog.splice(0, privateDialog.length - 12);
+  return answer;
 }
 
-async function handleGroupMessage(m) {
-  const chatId = m?.recipient?.chat_id;
-  if (chatId == null) return;
-  await rememberGroup(chatId);
-  // В группе бот всегда молчит. Аналитика идет только в личку по запросу.
+async function sendText(recipient, text) {
+  const parts = String(text || "").match(/[\s\S]{1,3500}/g) || [""];
+  for (const part of parts) await maxRequest(`/messages?${recipient}`, { method: "POST", body: { text: part }, timeout: 30000 });
 }
 
-function isSmallTalk(text) {
-  const s = String(text || "").trim().toLowerCase();
-  return /^(привет|здравствуй|здравствуйте|спасибо|ок|окей|поняла|готово|тест|ты работаешь\??)$/i.test(s);
-}
-
-async function handlePrivate(m) {
-  const uid = m?.sender?.user_id; if (uid == null) return;
-  if (!reportUserId) reportUserId = String(uid);
-  const text = String(m?.body?.text || "").trim();
+async function handlePrivate(message) {
+  const senderId = String(message?.sender?.user_id || ""); if (!senderId) return;
+  if (!reportUserId) reportUserId = senderId; if (reportUserId !== senderId) return;
+  const text = normalizeText(msgText(message)); const imgs = imageUrls(message); if (!text && !imgs.length) return;
   try {
-    if (imageUrls(m).length) {
-      const answer = await analyzeImageMessage(m, "личный чат", text);
-      await sendUser(uid, answer); return;
+    if (imgs.length) {
+      const descriptions = []; for (const u of imgs) descriptions.push(await describeImage(u));
+      const answer = await gigaChat([{ role: "system", content: `${DOMAIN_RULES}\n\nПользователь прислал изображение прямо в личку. Прочитай и ответь на его подпись/вопрос. Если подпись отсутствует — кратко выпиши, что видно по контейнерам.` }, { role: "user", content: `Вопрос: ${text || "Что здесь написано?"}\nИзображение:\n${descriptions.join("\n")}` }]);
+      await sendText(`user_id=${encodeURIComponent(senderId)}`, answer); return;
     }
-    if (!text) return;
     if (/^(какие чаты|какие чаты видишь|список чатов)$/i.test(text)) {
-      const rows = [];
-      for (const [id] of knownGroups) { const info = await chatInfo(id); rows.push(`• ${info.title}`); }
-      await sendUser(uid, rows.length ? `Вижу чаты:\n${rows.join("\n")}` : "Пока не вижу рабочих чатов.");
-      return;
+      const rows = []; for (const [id, m] of knownGroups) rows.push(`• ${m.title || "чат"} (${id})`);
+      await sendText(`user_id=${encodeURIComponent(senderId)}`, rows.length ? `Вижу чаты:\n${rows.join("\n")}` : "Пока не зарегистрирован ни один групповой чат. Добавьте меня администратором в рабочий чат — я запомню его молча."); return;
     }
-    if (isSmallTalk(text)) {
-      await sendUser(uid, "Да, я на связи."); return;
+    if (isExactLookupQuestion(text)) {
+      const found = await exactLookup(text); if (found) { await sendText(`user_id=${encodeURIComponent(senderId)}`, found); return; }
     }
-    // Любая рабочая фраза идет через смысловой анализ истории всех чатов.
-    const answer = await answerWorkQuestion(text);
-    state.lastError = null;
-    await sendUser(uid, answer);
-  } catch (e) {
-    state.lastError = `private: ${errText(e)}`;
-    await sendUser(uid, `Не получилось обработать запрос: ${e.message}`);
-  }
+    const answer = await answerWorkQuestion(text); await sendText(`user_id=${encodeURIComponent(senderId)}`, answer);
+  } catch (e) { state.lastError = `private: ${errText(e)}`; await sendText(`user_id=${encodeURIComponent(senderId)}`, `Ошибка анализа: ${errText(e).slice(0,1000)}`); }
 }
+
+async function handleGroupMessage(message) { const chatId = message?.recipient?.chat_id; if (chatId != null) await rememberGroup(chatId); /* SILENT: nothing sent to group */ }
 
 async function handleUpdate(u) {
-  const type = u?.update_type;
-  if (type === "bot_added") {
-    if (u?.chat_id != null) await rememberGroup(u.chat_id);
-    return;
-  }
-  if (type === "bot_removed") {
-    if (u?.chat_id != null) { knownGroups.delete(String(u.chat_id)); state.knownGroupCount = knownGroups.size; }
-    return;
-  }
-  if (type === "chat_title_changed") {
-    if (u?.chat_id != null) await rememberGroup(u.chat_id);
-    return;
-  }
+  const type = u?.update_type || ""; state.lastUpdateType = type; state.lastUpdateAt = new Date().toISOString();
+  if (type === "bot_added") { await rememberGroup(u?.chat_id); return; }
+  if (type === "bot_removed") { if (u?.chat_id != null) { knownGroups.delete(String(u.chat_id)); state.knownGroupCount = knownGroups.size; } return; }
+  if (type === "chat_title_changed") { await rememberGroup(u?.chat_id); return; }
   if (["message_created","message_edited"].includes(type)) {
     const m = u?.message; if (!m || m?.sender?.is_bot) return;
     if (isGroup(m)) await handleGroupMessage(m); else await handlePrivate(m);
   }
-  // message_removed учитывается при следующем чтении истории: удаленного сообщения уже не будет в GET /messages.
 }
 
 async function poll() {
   let marker = null, first = true; state.polling = true;
   while (true) {
     try {
-      const p = new URLSearchParams({ limit: "100", timeout: "30", types: "message_created,message_edited,message_removed,bot_added,bot_removed,chat_title_changed,bot_started" });
-      if (!first && marker != null) p.set("marker", String(marker));
-      const d = await maxRequest(`/updates?${p}`, { timeout: 40000 });
+      const q = new URLSearchParams({ limit: "100", timeout: "30", types: "message_created,message_edited,message_removed,bot_added,bot_removed,chat_title_changed,bot_started" }); if (marker != null) q.set("marker", String(marker));
+      const d = await maxRequest(`/updates?${q}`, { timeout: 40000 });
+      if (first && marker == null) { marker = d?.marker ?? null; first = false; continue; }
       first = false; if (d?.marker != null) marker = d.marker;
       for (const u of d?.updates || []) await handleUpdate(u);
-    } catch (e) {
-      state.lastError = `poll: ${errText(e)}`;
-      await sleep(3000);
-    }
+    } catch (e) { state.lastError = `poll: ${errText(e)}`; await sleep(2500); }
   }
 }
 
@@ -533,10 +456,7 @@ async function start() {
       await getGigaToken(false); state.gigachatAuthorized = true;
       for (const id of SEEDED_CHAT_IDS) await rememberGroup(id);
       await poll();
-    } catch (e) {
-      state.maxAuthorized = false; state.polling = false; state.lastError = `startup: ${errText(e)}`;
-      await sleep(5000);
-    }
+    } catch (e) { state.maxAuthorized = false; state.polling = false; state.lastError = `startup: ${errText(e)}`; await sleep(5000); }
   }
 }
 
