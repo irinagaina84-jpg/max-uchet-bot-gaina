@@ -9,7 +9,8 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.3.7"
+    "@cloudflare/containers": "^0.3.7",
+    "sharp": "^0.34.3"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"
