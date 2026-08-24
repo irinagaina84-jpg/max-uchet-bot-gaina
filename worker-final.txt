@@ -1,15 +1,16 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v4";
+const CONTAINER_INSTANCE = "main-v5";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
   sleepAfter = "10m";
   envVars = {
     MAX_BOT_TOKEN: env.MAX_BOT_TOKEN,
-    OPENAI_API_KEY: env.OPENAI_API_KEY,
-    OPENAI_MODEL: env.OPENAI_MODEL || "gpt-5.6-terra",
+    GIGACHAT_AUTH_KEY: env.GIGACHAT_AUTH_KEY,
+    GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
+    GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     PORT: "3000",
   };
 }
