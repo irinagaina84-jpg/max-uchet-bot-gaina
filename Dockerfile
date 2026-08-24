@@ -4,7 +4,6 @@ COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
-COPY bot-giga-v14.js ./bot-giga-v14.js
-COPY launcher-v15.js ./launcher-v15.js
+COPY bot-giga-v14.js ./bot.js
 EXPOSE 3000
-CMD ["node", "launcher-v15.js"]
+CMD ["node", "bot.js"]
