@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v21";
+const CONTAINER_INSTANCE = "main-v22";
+const DEFAULT_STATE_URL = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/state";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -14,8 +15,19 @@ export class MaxBotContainer extends Container {
     REPORT_USER_ID: env.REPORT_USER_ID || "",
     WATCH_CHAT_IDS: env.WATCH_CHAT_IDS || "-77765742260432",
     ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
+    STATE_URL: env.STATE_URL || DEFAULT_STATE_URL,
     PORT: "3000",
   };
+
+  async getKnownChats() {
+    return (await this.ctx.storage.get("known_chats")) || [];
+  }
+
+  async setKnownChats(chats) {
+    const safe = Array.isArray(chats) ? chats.slice(0, 500) : [];
+    await this.ctx.storage.put("known_chats", safe);
+    return { ok: true, count: safe.length };
+  }
 }
 
 async function pingContainer(runtimeEnv) {
@@ -25,9 +37,28 @@ async function pingContainer(runtimeEnv) {
 }
 
 export default {
-  async fetch(_request, runtimeEnv) {
+  async fetch(request, runtimeEnv) {
     try {
+      const url = new URL(request.url);
       const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+
+      if (url.pathname === "/state") {
+        if (request.headers.get("X-Internal-Auth") !== runtimeEnv.MAX_BOT_TOKEN) {
+          return new Response("Forbidden", { status: 403 });
+        }
+
+        if (request.method === "GET") {
+          return Response.json(await container.getKnownChats());
+        }
+
+        if (request.method === "POST") {
+          const chats = await request.json();
+          return Response.json(await container.setKnownChats(chats));
+        }
+
+        return new Response("Method not allowed", { status: 405 });
+      }
+
       return await container.fetch(new Request("http://container/health"));
     } catch (error) {
       console.error("Container start error", error);
