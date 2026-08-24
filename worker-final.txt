@@ -6,7 +6,7 @@ const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
-const CHAT_REGISTRY_VERSION = 2;
+const CHAT_REGISTRY_VERSION = 3;
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
