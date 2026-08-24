@@ -1,8 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-// ВАЖНО: это постоянное имя production-экземпляра.
-// Больше не меняем его при обычных обновлениях, чтобы не терять Durable Object storage.
+// Постоянное имя production-экземпляра. Не менять при обычных обновлениях.
 const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
@@ -38,10 +37,11 @@ export class MaxBotContainer extends Container {
     if (chatId == null) return { ok: false };
     const id = String(chatId);
     const chats = await this.getKnownChats();
+    const previous = chats.find((x) => String(x?.chat_id) === id);
     const next = chats.filter((x) => String(x?.chat_id) !== id);
     next.push({
       chat_id: id,
-      title: title || chats.find((x) => String(x?.chat_id) === id)?.title || `чат ${id}`,
+      title: title || previous?.title || `чат ${id}`,
       lastSeenAt: Date.now(),
     });
     await this.ctx.storage.put("known_chats", next.slice(-500));
@@ -76,8 +76,6 @@ async function processWebhook(runtimeEnv, update) {
     }
   }
 
-  // Передаём событие в контейнер для обычной обработки.
-  // В группах сам бот ничего не отправляет: это дополнительно заблокировано внутри bot.js.
   await container.fetch(new Request("http://container/update", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -85,10 +83,15 @@ async function processWebhook(runtimeEnv, update) {
   }));
 }
 
-async function pingContainer(runtimeEnv) {
+async function containerHealth(runtimeEnv) {
   const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
   const response = await container.fetch(new Request("http://container/health"));
-  await response.arrayBuffer();
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
+}
+
+async function pingContainer(runtimeEnv) {
+  await containerHealth(runtimeEnv);
 }
 
 export default {
@@ -97,21 +100,43 @@ export default {
       const url = new URL(request.url);
       const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 
-      if (url.pathname === "/max-webhook" && request.method === "POST") {
-        let update = {};
-        try {
-          update = await request.json();
-        } catch {
-          return new Response("Bad JSON", { status: 400 });
+      if (url.pathname === "/max-webhook") {
+        if (request.method === "GET") {
+          return Response.json({ ok: true, webhook: "ready" });
         }
 
-        // MAX требует быстрый 200. Сохранение chat_id и обработка идут после ответа.
-        ctx.waitUntil(
-          processWebhook(runtimeEnv, update).catch((error) =>
-            console.error("MAX webhook processing error", error),
-          ),
-        );
-        return Response.json({ ok: true });
+        if (request.method === "POST") {
+          let update = {};
+          try {
+            update = await request.json();
+          } catch {
+            return new Response("Bad JSON", { status: 400 });
+          }
+
+          ctx.waitUntil(
+            processWebhook(runtimeEnv, update).catch((error) =>
+              console.error("MAX webhook processing error", error),
+            ),
+          );
+          return Response.json({ ok: true });
+        }
+
+        return new Response("Method not allowed", { status: 405 });
+      }
+
+      if (url.pathname === "/diagnostic") {
+        const [knownChats, health] = await Promise.all([
+          container.getKnownChats(),
+          containerHealth(runtimeEnv),
+        ]);
+        return Response.json({
+          ok: true,
+          transport: "webhook",
+          webhookUrl: DEFAULT_WEBHOOK_URL,
+          knownChatCount: knownChats.length,
+          knownChats,
+          container: health,
+        });
       }
 
       if (url.pathname === "/state") {
@@ -131,7 +156,7 @@ export default {
         return new Response("Method not allowed", { status: 405 });
       }
 
-      return await container.fetch(new Request("http://container/health"));
+      return Response.json(await containerHealth(runtimeEnv));
     } catch (error) {
       console.error("Container start error", error);
       return new Response(`Container error: ${error?.message || error}`, { status: 500 });
