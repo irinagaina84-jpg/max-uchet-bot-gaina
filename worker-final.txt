@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-const CONTAINER_INSTANCE = "main-v12";
+const CONTAINER_INSTANCE = "main-v13";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -12,6 +12,8 @@ export class MaxBotContainer extends Container {
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     REPORT_USER_ID: env.REPORT_USER_ID || "",
+    WATCH_CHAT_IDS: env.WATCH_CHAT_IDS || "-77765742260432",
+    ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
     PORT: "3000",
   };
 }
