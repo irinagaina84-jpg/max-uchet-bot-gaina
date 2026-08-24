@@ -7,7 +7,9 @@ RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
 COPY patch-v14-fullchat.mjs ./patch-v14-fullchat.mjs
 COPY patch-v14-silent.mjs ./patch-v14-silent.mjs
+COPY patch-v14-marker.mjs ./patch-v14-marker.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
+RUN node patch-v14-marker.mjs
 EXPOSE 3000
 CMD ["node", "bot.js"]
