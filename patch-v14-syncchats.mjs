@@ -8,7 +8,6 @@ function replaceOnce(oldText, newText, label) {
   code = code.replace(oldText, newText);
 }
 
-// Replace loadPersistedChats so memory always mirrors durable storage instead of only appending.
 replaceOnce(
 `async function loadPersistedChats() {
   if (!STATE_URL) return;
@@ -60,19 +59,33 @@ async function syncKnownChats() {
 
   for (const [id, meta] of knownGroups) {
     try {
-      await maxRequest(`/chats/${encodeURIComponent(id)}/members/me`, { timeout: 15000 });
-      let title = meta?.title || `чат ${id}`;
-      try {
-        const c = await maxRequest(`/chats/${encodeURIComponent(id)}`, { timeout: 15000 });
-        if (c?.title) title = String(c.title);
-      } catch {}
-      active.set(String(id), { title, lastSeenAt: meta?.lastSeenAt || Date.now() });
+      const chat = await maxRequest(`/chats/${encodeURIComponent(id)}`, { timeout: 15000 });
+      const chatType = String(chat?.type || "").toLowerCase();
+      const chatStatus = String(chat?.status || "").toLowerCase();
+
+      // Never treat a private dialog as a monitored work chat.
+      if (!["chat", "channel"].includes(chatType)) continue;
+      if (chatStatus && chatStatus !== "active") continue;
+
+      const me = await maxRequest(`/chats/${encodeURIComponent(id)}/members/me`, { timeout: 15000 });
+      const permissions = Array.isArray(me?.permissions) ? me.permissions.map(String) : [];
+      const isAdmin = me?.is_admin === true || permissions.length > 0;
+      const canReadAll = permissions.includes("read_all_messages");
+
+      // History via GET /messages is available only for an admin bot.
+      if (!isAdmin || !canReadAll) continue;
+
+      // Verify that the history endpoint is actually available right now.
+      await maxRequest(`/messages?chat_id=${encodeURIComponent(id)}&count=1`, { timeout: 15000 });
+
+      active.set(String(id), {
+        title: String(chat?.title || meta?.title || `чат ${id}`),
+        lastSeenAt: meta?.lastSeenAt || Date.now(),
+        type: chatType,
+      });
     } catch (error) {
-      // 403/404 means the bot is no longer a member/admin of that chat: remove it.
-      if (![403, 404].includes(Number(error?.status))) {
-        // For transient MAX/network errors, keep the chat instead of losing it.
-        active.set(String(id), meta);
-      }
+      // A stale/non-admin/private chat must not remain in the working list.
+      console.error(`sync chat ${id}: ${errText(error)}`);
     }
   }
 
@@ -84,7 +97,6 @@ async function syncKnownChats() {
 'live chat sync helper'
 );
 
-// Always sync before any work analysis.
 replaceOnce(
 `async function answerWorkQuestion(question) {
   const { start, end } = requestedWindow(question);`,
@@ -94,7 +106,6 @@ replaceOnce(
 'sync before analysis'
 );
 
-// Sync before listing chats in private conversation.
 replaceOnce(
 `if (/какие\s+чаты|какие.*чаты.*вид|список.*чат/i.test(text)) {
       const rows = [];`,
@@ -106,8 +117,8 @@ replaceOnce(
 
 code = code.replace(
   'version: "v27-webhook-fullchat-silent",',
-  'version: "v28-webhook-live-chat-sync",'
+  'version: "v29-admin-chat-filter",'
 );
 
 fs.writeFileSync(path, code);
-console.log('live chat synchronization enabled');
+console.log('strict admin work-chat synchronization enabled');
