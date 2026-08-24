@@ -6,6 +6,7 @@ const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
+const CHAT_REGISTRY_VERSION = 2;
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -23,11 +24,21 @@ export class MaxBotContainer extends Container {
     PORT: "3000",
   };
 
+  async ensureRegistryVersion() {
+    const current = await this.ctx.storage.get("chat_registry_version");
+    if (current !== CHAT_REGISTRY_VERSION) {
+      await this.ctx.storage.put("chat_registry_version", CHAT_REGISTRY_VERSION);
+      await this.ctx.storage.put("known_chats", []);
+    }
+  }
+
   async getKnownChats() {
+    await this.ensureRegistryVersion();
     return (await this.ctx.storage.get("known_chats")) || [];
   }
 
   async setKnownChats(chats) {
+    await this.ensureRegistryVersion();
     const safe = Array.isArray(chats) ? chats.slice(0, 500) : [];
     await this.ctx.storage.put("known_chats", safe);
     return { ok: true, count: safe.length };
@@ -56,24 +67,49 @@ export class MaxBotContainer extends Container {
     await this.ctx.storage.put("known_chats", next);
     return { ok: true, count: next.length };
   }
+
+  async rememberUpdate(update) {
+    const existing = (await this.ctx.storage.get("recent_updates")) || [];
+    const item = {
+      at: Date.now(),
+      update_type: String(update?.update_type || ""),
+      chat_id: update?.chat_id ?? update?.message?.recipient?.chat_id ?? null,
+      recipient_type: update?.message?.recipient?.chat_type ?? update?.message?.recipient?.type ?? null,
+    };
+    const next = [...existing, item].slice(-20);
+    await this.ctx.storage.put("recent_updates", next);
+  }
+
+  async getRecentUpdates() {
+    return (await this.ctx.storage.get("recent_updates")) || [];
+  }
 }
 
-function chatIdFromUpdate(update) {
+function eventChatId(update) {
   return update?.chat_id ?? update?.message?.recipient?.chat_id ?? null;
+}
+
+function isGroupMessageUpdate(update) {
+  const type = String(update?.message?.recipient?.chat_type || update?.message?.recipient?.type || "").toLowerCase();
+  return type === "chat" || type === "channel";
 }
 
 async function processWebhook(runtimeEnv, update) {
   const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
-  const chatId = chatIdFromUpdate(update);
+  const chatId = eventChatId(update);
   const type = String(update?.update_type || "");
 
-  if (chatId != null) {
-    if (type === "bot_removed") {
-      await container.forgetChat(chatId);
-    } else {
-      const title = update?.title || update?.chat?.title || null;
-      await container.rememberChat(chatId, title);
-    }
+  await container.rememberUpdate(update);
+
+  // Registry contains only real group chats/channels. Never save bot_started/private dialogs.
+  if (type === "bot_removed" && chatId != null) {
+    await container.forgetChat(chatId);
+  } else if (type === "bot_added" && chatId != null) {
+    await container.rememberChat(chatId, null);
+  } else if (type === "chat_title_changed" && chatId != null) {
+    await container.rememberChat(chatId, update?.title || null);
+  } else if (["message_created", "message_edited", "message_removed"].includes(type) && chatId != null && isGroupMessageUpdate(update)) {
+    await container.rememberChat(chatId, null);
   }
 
   await container.fetch(new Request("http://container/update", {
@@ -125,16 +161,19 @@ export default {
       }
 
       if (url.pathname === "/diagnostic") {
-        const [knownChats, health] = await Promise.all([
+        const [knownChats, recentUpdates, health] = await Promise.all([
           container.getKnownChats(),
+          container.getRecentUpdates(),
           containerHealth(runtimeEnv),
         ]);
         return Response.json({
           ok: true,
           transport: "webhook",
           webhookUrl: DEFAULT_WEBHOOK_URL,
+          registryVersion: CHAT_REGISTRY_VERSION,
           knownChatCount: knownChats.length,
           knownChats,
+          recentUpdates,
           container: health,
         });
       }
