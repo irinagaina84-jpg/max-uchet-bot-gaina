@@ -1,12 +1,12 @@
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
-// Постоянное имя production-экземпляра. Не менять при обычных обновлениях.
 const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 3;
+const WORKER_VERSION = "worker-v31-clean-restart";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -29,6 +29,7 @@ export class MaxBotContainer extends Container {
     if (current !== CHAT_REGISTRY_VERSION) {
       await this.ctx.storage.put("chat_registry_version", CHAT_REGISTRY_VERSION);
       await this.ctx.storage.put("known_chats", []);
+      await this.ctx.storage.put("recent_updates", []);
     }
   }
 
@@ -69,6 +70,7 @@ export class MaxBotContainer extends Container {
   }
 
   async rememberUpdate(update) {
+    await this.ensureRegistryVersion();
     const existing = (await this.ctx.storage.get("recent_updates")) || [];
     const item = {
       at: Date.now(),
@@ -76,12 +78,29 @@ export class MaxBotContainer extends Container {
       chat_id: update?.chat_id ?? update?.message?.recipient?.chat_id ?? null,
       recipient_type: update?.message?.recipient?.chat_type ?? update?.message?.recipient?.type ?? null,
     };
-    const next = [...existing, item].slice(-20);
-    await this.ctx.storage.put("recent_updates", next);
+    await this.ctx.storage.put("recent_updates", [...existing, item].slice(-20));
   }
 
   async getRecentUpdates() {
+    await this.ensureRegistryVersion();
     return (await this.ctx.storage.get("recent_updates")) || [];
+  }
+
+  async getRuntimeState() {
+    return {
+      running: Boolean(this.ctx.container.running),
+      workerVersion: WORKER_VERSION,
+    };
+  }
+
+  async resetRuntimeOnce(version) {
+    const key = "runtime_reset_version";
+    const current = await this.ctx.storage.get(key);
+    if (current === version) return { reset: false, running: Boolean(this.ctx.container.running) };
+    await this.ctx.storage.put(key, version);
+    const wasRunning = Boolean(this.ctx.container.running);
+    if (wasRunning) await this.destroy();
+    return { reset: true, wasRunning };
   }
 }
 
@@ -101,7 +120,6 @@ async function processWebhook(runtimeEnv, update) {
 
   await container.rememberUpdate(update);
 
-  // Registry contains only real group chats/channels. Never save bot_started/private dialogs.
   if (type === "bot_removed" && chatId != null) {
     await container.forgetChat(chatId);
   } else if (type === "bot_added" && chatId != null) {
@@ -112,11 +130,16 @@ async function processWebhook(runtimeEnv, update) {
     await container.rememberChat(chatId, null);
   }
 
-  await container.fetch(new Request("http://container/update", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(update || {}),
-  }));
+  // Storage is updated before the bot process is touched. The webhook remains useful even if the process is restarting.
+  try {
+    await container.fetch(new Request("http://container/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update || {}),
+    }));
+  } catch (error) {
+    console.error("Container webhook delivery deferred", error);
+  }
 }
 
 async function containerHealth(runtimeEnv) {
@@ -127,6 +150,8 @@ async function containerHealth(runtimeEnv) {
 }
 
 async function pingContainer(runtimeEnv) {
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+  await container.resetRuntimeOnce(WORKER_VERSION);
   await containerHealth(runtimeEnv);
 }
 
@@ -138,73 +163,59 @@ export default {
 
       if (url.pathname === "/max-webhook") {
         if (request.method === "GET") {
-          return Response.json({ ok: true, webhook: "ready" });
+          return Response.json({ ok: true, webhook: "ready", workerVersion: WORKER_VERSION });
         }
-
         if (request.method === "POST") {
           let update = {};
-          try {
-            update = await request.json();
-          } catch {
-            return new Response("Bad JSON", { status: 400 });
-          }
-
-          ctx.waitUntil(
-            processWebhook(runtimeEnv, update).catch((error) =>
-              console.error("MAX webhook processing error", error),
-            ),
-          );
+          try { update = await request.json(); }
+          catch { return new Response("Bad JSON", { status: 400 }); }
+          ctx.waitUntil(processWebhook(runtimeEnv, update).catch((error) => console.error("MAX webhook processing error", error)));
           return Response.json({ ok: true });
         }
-
         return new Response("Method not allowed", { status: 405 });
       }
 
+      // Lightweight diagnostic: DOES NOT start or contact the Linux container process.
       if (url.pathname === "/diagnostic") {
-        const [knownChats, recentUpdates, health] = await Promise.all([
+        const [knownChats, recentUpdates, runtime] = await Promise.all([
           container.getKnownChats(),
           container.getRecentUpdates(),
-          containerHealth(runtimeEnv),
+          container.getRuntimeState(),
         ]);
+        ctx.waitUntil(container.resetRuntimeOnce(WORKER_VERSION).catch((error) => console.error("One-time reset error", error)));
         return Response.json({
           ok: true,
+          workerVersion: WORKER_VERSION,
           transport: "webhook",
           webhookUrl: DEFAULT_WEBHOOK_URL,
           registryVersion: CHAT_REGISTRY_VERSION,
           knownChatCount: knownChats.length,
           knownChats,
           recentUpdates,
-          container: health,
+          runtime,
         });
       }
 
+      if (url.pathname === "/diagnostic/full") {
+        const health = await containerHealth(runtimeEnv);
+        return Response.json({ ok: true, workerVersion: WORKER_VERSION, container: health });
+      }
+
       if (url.pathname === "/state") {
-        if (request.headers.get("X-Internal-Auth") !== runtimeEnv.MAX_BOT_TOKEN) {
-          return new Response("Forbidden", { status: 403 });
-        }
-
-        if (request.method === "GET") {
-          return Response.json(await container.getKnownChats());
-        }
-
-        if (request.method === "POST") {
-          const chats = await request.json();
-          return Response.json(await container.setKnownChats(chats));
-        }
-
+        if (request.headers.get("X-Internal-Auth") !== runtimeEnv.MAX_BOT_TOKEN) return new Response("Forbidden", { status: 403 });
+        if (request.method === "GET") return Response.json(await container.getKnownChats());
+        if (request.method === "POST") return Response.json(await container.setKnownChats(await request.json()));
         return new Response("Method not allowed", { status: 405 });
       }
 
-      return Response.json(await containerHealth(runtimeEnv));
+      return Response.json({ ok: true, workerVersion: WORKER_VERSION });
     } catch (error) {
-      console.error("Container start error", error);
-      return new Response(`Container error: ${error?.message || error}`, { status: 500 });
+      console.error("Worker error", error);
+      return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 });
     }
   },
 
   async scheduled(_controller, runtimeEnv, ctx) {
-    ctx.waitUntil(
-      pingContainer(runtimeEnv).catch((error) => console.error("Keepalive error", error)),
-    );
+    ctx.waitUntil(pingContainer(runtimeEnv).catch((error) => console.error("Keepalive error", error)));
   },
 };
