@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 const path = "./bot.js";
 let code = fs.readFileSync(path, "utf8");
+const STALE_CHAT_ID = "-77765742260432";
 
 function replaceOnce(oldText, newText, label) {
   if (!code.includes(oldText)) throw new Error(`sync chats patch anchor not found: ${label}`);
@@ -42,6 +43,7 @@ replaceOnce(
     knownGroups.clear();
     for (const item of list) {
       if (item?.chat_id == null) continue;
+      if (String(item.chat_id) === STALE_CHAT_ID) continue;
       knownGroups.set(String(item.chat_id), {
         title: String(item.title || ("чат " + item.chat_id)),
         lastSeenAt: Number(item.lastSeenAt || 0),
@@ -58,24 +60,21 @@ async function syncKnownChats() {
   const active = new Map();
 
   for (const [id, meta] of knownGroups) {
+    if (String(id) === STALE_CHAT_ID) continue;
     try {
       const chat = await maxRequest(`/chats/${encodeURIComponent(id)}`, { timeout: 15000 });
       const chatType = String(chat?.type || "").toLowerCase();
       const chatStatus = String(chat?.status || "").toLowerCase();
 
-      // Never treat a private dialog as a monitored work chat.
       if (!["chat", "channel"].includes(chatType)) continue;
       if (chatStatus && chatStatus !== "active") continue;
 
       const me = await maxRequest(`/chats/${encodeURIComponent(id)}/members/me`, { timeout: 15000 });
       const permissions = Array.isArray(me?.permissions) ? me.permissions.map(String) : [];
-      const isAdmin = me?.is_admin === true || permissions.length > 0;
+      const isAdmin = me?.is_admin === true;
       const canReadAll = permissions.includes("read_all_messages");
-
-      // History via GET /messages is available only for an admin bot.
       if (!isAdmin || !canReadAll) continue;
 
-      // Verify that the history endpoint is actually available right now.
       await maxRequest(`/messages?chat_id=${encodeURIComponent(id)}&count=1`, { timeout: 15000 });
 
       active.set(String(id), {
@@ -84,7 +83,6 @@ async function syncKnownChats() {
         type: chatType,
       });
     } catch (error) {
-      // A stale/non-admin/private chat must not remain in the working list.
       console.error(`sync chat ${id}: ${errText(error)}`);
     }
   }
@@ -117,8 +115,8 @@ replaceOnce(
 
 code = code.replace(
   'version: "v27-webhook-fullchat-silent",',
-  'version: "v29-admin-chat-filter",'
+  'version: "v35-strict-active-admin",'
 );
 
 fs.writeFileSync(path, code);
-console.log('strict admin work-chat synchronization enabled');
+console.log('strict active-admin chat synchronization enabled');
