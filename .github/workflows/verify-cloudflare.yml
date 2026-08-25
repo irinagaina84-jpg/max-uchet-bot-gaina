@@ -1,4 +1,4 @@
-name: Verify Cloudflare v45
+name: Verify MAX bot v46
 
 on:
   push:
@@ -9,10 +9,34 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  build-check:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for v45 with current chat
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Build bot exactly like Docker patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f bot.js
+          node patch-v14-fullchat.mjs
+          node patch-v14-silent.mjs
+          node patch-v14-webhook.mjs
+          node patch-v14-block-stale.mjs
+          node patch-v14-max-history.mjs
+          node --check bot.js
+          grep -q 'v46-resilient-full-history' bot.js
+          echo 'v46 bot.js built and parsed successfully'
+
+  verify-live:
+    needs: build-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for v46 with current chat
         shell: bash
         run: |
           set -euo pipefail
@@ -24,15 +48,15 @@ jobs:
             FULL="$(curl -fsS --max-time 20 "$FULL_URL" || true)"
             echo "Attempt $i diagnostic: $DIAG"
             echo "Attempt $i full: $FULL"
-            if echo "$FULL" | grep -q '"workerVersion":"worker-v45-gigachat-schema-fixed"' \
-              && echo "$FULL" | grep -q '"version":"v45-gigachat-schema-fixed"' \
+            if echo "$FULL" | grep -q '"workerVersion":"worker-v46-resilient-full-history"' \
+              && echo "$FULL" | grep -q '"version":"v46-resilient-full-history"' \
               && echo "$FULL" | grep -q '"maxAuthorized":true' \
               && echo "$FULL" | grep -q '"gigachatAuthorized":true' \
               && echo "$FULL" | grep -Eq '"knownGroupCount":[1-9][0-9]*'; then
-              echo "Cloudflare v45 is live with current chat"
+              echo 'Cloudflare v46 is live with current chat'
               exit 0
             fi
             sleep 13
           done
-          echo "Cloudflare did not reach v45 within 6 minutes"
+          echo 'Cloudflare did not reach v46 within 6 minutes'
           exit 1
