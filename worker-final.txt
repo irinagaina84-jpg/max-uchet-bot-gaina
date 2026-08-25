@@ -6,7 +6,12 @@ const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev"
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 4;
-const WORKER_VERSION = "worker-v34-clean-chat-registry";
+const WORKER_VERSION = "worker-v35-stale-chat-filter";
+const STALE_CHAT_IDS = new Set(["-77765742260432"]);
+
+function isStaleChatId(value) {
+  return STALE_CHAT_IDS.has(String(value ?? ""));
+}
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -17,7 +22,7 @@ export class MaxBotContainer extends Container {
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     REPORT_USER_ID: env.REPORT_USER_ID || "",
-    WATCH_CHAT_IDS: env.WATCH_CHAT_IDS || "",
+    WATCH_CHAT_IDS: "",
     ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
     STATE_URL: env.STATE_URL || DEFAULT_STATE_URL,
     MAX_WEBHOOK_URL: env.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
@@ -35,18 +40,23 @@ export class MaxBotContainer extends Container {
 
   async getKnownChats() {
     await this.ensureRegistryVersion();
-    return (await this.ctx.storage.get("known_chats")) || [];
+    const current = (await this.ctx.storage.get("known_chats")) || [];
+    const filtered = current.filter((x) => !isStaleChatId(x?.chat_id));
+    if (filtered.length !== current.length) await this.ctx.storage.put("known_chats", filtered);
+    return filtered;
   }
 
   async setKnownChats(chats) {
     await this.ensureRegistryVersion();
-    const safe = Array.isArray(chats) ? chats.slice(0, 500) : [];
+    const safe = (Array.isArray(chats) ? chats : [])
+      .filter((x) => !isStaleChatId(x?.chat_id))
+      .slice(0, 500);
     await this.ctx.storage.put("known_chats", safe);
     return { ok: true, count: safe.length };
   }
 
   async rememberChat(chatId, title = null) {
-    if (chatId == null) return { ok: false };
+    if (chatId == null || isStaleChatId(chatId)) return { ok: false, ignored: true };
     const id = String(chatId);
     const chats = await this.getKnownChats();
     const previous = chats.find((x) => String(x?.chat_id) === id);
@@ -113,7 +123,6 @@ async function processWebhook(runtimeEnv, update) {
 
   await container.rememberUpdate(update);
 
-  // Only real group/channel events can enter the work-chat registry.
   if (type === "bot_removed" && chatId != null) {
     await container.forgetChat(chatId);
   } else if (type === "bot_added" && chatId != null) {
@@ -181,6 +190,7 @@ export default {
           transport: "webhook",
           webhookUrl: runtimeEnv.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
           maxApiTransport: "trusted-container",
+          staleChatFilter: [...STALE_CHAT_IDS],
           registryVersion: CHAT_REGISTRY_VERSION,
           knownChatCount: knownChats.length,
           knownChats,
