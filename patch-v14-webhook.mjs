@@ -3,39 +3,122 @@ import fs from "node:fs";
 const path = "./bot.js";
 let code = fs.readFileSync(path, "utf8");
 
-function replaceOnce(oldText, newText, label) {
-  if (!code.includes(oldText)) throw new Error(`webhook patch anchor not found: ${label}`);
+function replaceIfPresent(oldText, newText, label) {
+  if (!code.includes(oldText)) {
+    console.warn(`webhook patch skipped: ${label}`);
+    return false;
+  }
   code = code.replace(oldText, newText);
+  console.log(`webhook patched: ${label}`);
+  return true;
 }
 
-replaceOnce(
-  'const STATE_URL = (process.env.STATE_URL || "").trim();',
-  'const STATE_URL = (process.env.STATE_URL || "").trim();\nconst WEBHOOK_URL = (process.env.MAX_WEBHOOK_URL || "").trim();',
-  'webhook env'
-);
+if (!code.includes('const WEBHOOK_URL = (process.env.MAX_WEBHOOK_URL || "").trim();')) {
+  replaceIfPresent(
+    'const STATE_URL = (process.env.STATE_URL || "").trim();',
+    'const STATE_URL = (process.env.STATE_URL || "").trim();\nconst WEBHOOK_URL = (process.env.MAX_WEBHOOK_URL || "").trim();',
+    'webhook env'
+  );
+}
 
-replaceOnce(
-  'http.createServer((_req, res) => {\n  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });\n  res.end(JSON.stringify({ ok: true, service: "MAX учет бот", ...state }, null, 2));\n}).listen(PORT, "0.0.0.0");',
-  `http.createServer((req, res) => {\n  if (req.method === "POST" && req.url === "/update") {\n    let raw = "";\n    req.setEncoding("utf8");\n    req.on("data", (chunk) => { raw += chunk; });\n    req.on("end", () => {\n      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });\n      res.end(JSON.stringify({ ok: true }));\n      try {\n        const update = JSON.parse(raw || "{}");\n        Promise.resolve(handleUpdate(update)).catch((error) => {\n          state.lastError = \`webhook update: \${errText(error)}\`;\n        });\n      } catch (error) {\n        state.lastError = \`webhook parse: \${errText(error)}\`;\n      }\n    });\n    return;\n  }\n\n  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });\n  res.end(JSON.stringify({ ok: true, service: "MAX учет бот", ...state }, null, 2));\n}).listen(PORT, "0.0.0.0");`,
-  'http update endpoint'
-);
+const serverOld = [
+  'http.createServer((_req, res) => {',
+  '  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });',
+  '  res.end(JSON.stringify({ ok: true, service: "MAX учет бот", ...state }, null, 2));',
+  '}).listen(PORT, "0.0.0.0");'
+].join('\n');
 
-replaceOnce(
+const serverNew = [
+  'http.createServer((req, res) => {',
+  '  if (req.method === "POST" && req.url === "/update") {',
+  '    let raw = "";',
+  '    req.setEncoding("utf8");',
+  '    req.on("data", (chunk) => { raw += chunk; });',
+  '    req.on("end", () => {',
+  '      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });',
+  '      res.end(JSON.stringify({ ok: true }));',
+  '      try {',
+  '        const update = JSON.parse(raw || "{}");',
+  '        Promise.resolve(handleUpdate(update)).catch((error) => {',
+  '          state.lastError = `webhook update: ${errText(error)}`;',
+  '        });',
+  '      } catch (error) {',
+  '        state.lastError = `webhook parse: ${errText(error)}`;',
+  '      }',
+  '    });',
+  '    return;',
+  '  }',
+  '',
+  '  res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });',
+  '  res.end(JSON.stringify({ ok: true, service: "MAX учет бот", ...state }, null, 2));',
+  '}).listen(PORT, "0.0.0.0");'
+].join('\n');
+
+if (!code.includes('req.method === "POST" && req.url === "/update"')) {
+  replaceIfPresent(serverOld, serverNew, 'http update endpoint');
+}
+
+replaceIfPresent(
   'if (/^(какие чаты|какие чаты видишь|список чатов)$/i.test(text)) {',
   'if (/какие\\s+чаты|какие.*чаты.*вид|список.*чат/i.test(text)) {',
   'chat list command'
 );
 
-const startOld = `async function start() {\n  while (true) {\n    try {\n      await maxRequest("/me", { timeout: 12000 }); state.maxAuthorized = true;\n      await getGigaToken(false); state.gigachatAuthorized = true;\n      await loadPersistedChats();\n      for (const id of SEEDED_CHAT_IDS) await rememberGroup(id);\n      await poll();\n    } catch (e) {\n      state.maxAuthorized = false; state.polling = false; state.lastError = \`startup: \${errText(e)}\`;\n      await sleep(5000);\n    }\n  }\n}\n\nvoid start();`;
+const startNew = [
+  'async function ensureWebhook() {',
+  '  if (!WEBHOOK_URL) throw new Error("MAX_WEBHOOK_URL is not configured");',
+  '  try {',
+  '    await maxRequest(`/subscriptions?url=${encodeURIComponent(WEBHOOK_URL)}`, { method: "DELETE", timeout: 20000 });',
+  '  } catch (error) {',
+  '    console.error("remove current webhook", errText(error));',
+  '  }',
+  '  const result = await maxRequest("/subscriptions", {',
+  '    method: "POST",',
+  '    body: {',
+  '      url: WEBHOOK_URL,',
+  '      update_types: ["message_created","message_edited","message_removed","bot_added","bot_removed","chat_title_changed","bot_started","bot_stopped"]',
+  '    },',
+  '    timeout: 30000',
+  '  });',
+  '  if (result?.success === false) throw new Error(result?.message || "MAX webhook subscription failed");',
+  '  state.polling = false;',
+  '  state.webhookMode = true;',
+  '  state.webhookConfigured = true;',
+  '}',
+  '',
+  'async function start() {',
+  '  while (true) {',
+  '    try {',
+  '      await maxRequest("/me", { timeout: 12000 });',
+  '      state.maxAuthorized = true;',
+  '      await getGigaToken(false);',
+  '      state.gigachatAuthorized = true;',
+  '      if (typeof loadPersistedChats === "function") await loadPersistedChats();',
+  '      for (const id of SEEDED_CHAT_IDS) await rememberGroup(id);',
+  '      await ensureWebhook();',
+  '      state.lastError = null;',
+  '      while (true) await sleep(60000);',
+  '    } catch (e) {',
+  '      state.maxAuthorized = false;',
+  '      state.webhookConfigured = false;',
+  '      state.lastError = `startup: ${errText(e)}`;',
+  '      await sleep(5000);',
+  '    }',
+  '  }',
+  '}',
+  '',
+  'void start();'
+].join('\n');
 
-const startNew = `async function ensureWebhook() {\n  if (!WEBHOOK_URL) throw new Error("MAX_WEBHOOK_URL is not configured");\n\n  // Always refresh the subscription. MAX docs require POST /subscriptions to update\n  // the set of update_types; an existing URL may still have an old event list.\n  try {\n    await maxRequest(\`/subscriptions?url=\${encodeURIComponent(WEBHOOK_URL)}\`, {\n      method: "DELETE",\n      timeout: 20000\n    });\n  } catch (error) {\n    console.error("remove current webhook", errText(error));\n  }\n\n  const result = await maxRequest("/subscriptions", {\n    method: "POST",\n    body: {\n      url: WEBHOOK_URL,\n      update_types: [\n        "message_created",\n        "message_edited",\n        "message_removed",\n        "bot_added",\n        "bot_removed",\n        "chat_title_changed",\n        "bot_started",\n        "bot_stopped"\n      ]\n    },\n    timeout: 30000\n  });\n  if (result?.success === false) throw new Error(result?.message || "MAX webhook subscription failed");\n\n  state.polling = false;\n  state.webhookMode = true;\n  state.webhookConfigured = true;\n}\n\nasync function start() {\n  while (true) {\n    try {\n      await maxRequest("/me", { timeout: 12000 });\n      state.maxAuthorized = true;\n      await getGigaToken(false);\n      state.gigachatAuthorized = true;\n      await loadPersistedChats();\n      for (const id of SEEDED_CHAT_IDS) await rememberGroup(id);\n      await ensureWebhook();\n      state.lastError = null;\n      while (true) await sleep(60000);\n    } catch (e) {\n      state.maxAuthorized = false;\n      state.webhookConfigured = false;\n      state.lastError = \`startup: \${errText(e)}\`;\n      await sleep(5000);\n    }\n  }\n}\n\nvoid start();`;
+const startPattern = /async function start\(\) \{[\s\S]*?\n\}\n\nvoid start\(\);/;
+if (startPattern.test(code)) {
+  code = code.replace(startPattern, startNew);
+  console.log('webhook patched: startup');
+} else if (!code.includes('async function ensureWebhook()')) {
+  throw new Error('webhook startup block not found');
+}
 
-replaceOnce(startOld, startNew, 'webhook startup');
-
-code = code.replace(
-  'version: "v24-fullchat-silent",',
-  'version: "v30-webhook-refresh",'
-);
+code = code.replace(/version:\s*"v[^"]+",/, 'version: "v30-webhook-refresh",');
 
 fs.writeFileSync(path, code);
 console.log("MAX webhook transport enabled and subscription refreshed");
