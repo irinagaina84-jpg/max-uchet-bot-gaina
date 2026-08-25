@@ -21,6 +21,12 @@ replaceOnce(
   'history access diagnostics'
 );
 
-code = code.replace(/version:\s*"v[^"]+",/, 'version: "v42-max-history-fixed",');
+replaceOnce(
+  'const data = await gigaRaw({ messages, stream: false, response_format: { type: "json_schema", json_schema: { name: "result", strict: true, schema } } });',
+  'const data = await gigaRaw({ messages, stream: false, response_format: { type: "json_schema", schema, strict: true } });',
+  'GigaChat response_format schema'
+);
+
+code = code.replace(/version:\s*"v[^"]+",/, 'version: "v45-gigachat-schema-fixed",');
 fs.writeFileSync(path, code);
-console.log("MAX history time bounds fixed");
+console.log("MAX history and GigaChat schema fixed");
