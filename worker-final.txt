@@ -5,8 +5,8 @@ const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
-const CHAT_REGISTRY_VERSION = 3;
-const WORKER_VERSION = "worker-v33-container-max-ca";
+const CHAT_REGISTRY_VERSION = 4;
+const WORKER_VERSION = "worker-v34-clean-chat-registry";
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -51,11 +51,7 @@ export class MaxBotContainer extends Container {
     const chats = await this.getKnownChats();
     const previous = chats.find((x) => String(x?.chat_id) === id);
     const next = chats.filter((x) => String(x?.chat_id) !== id);
-    next.push({
-      chat_id: id,
-      title: title || previous?.title || `чат ${id}`,
-      lastSeenAt: Date.now(),
-    });
+    next.push({ chat_id: id, title: title || previous?.title || `чат ${id}`, lastSeenAt: Date.now() });
     await this.ctx.storage.put("known_chats", next.slice(-500));
     return { ok: true, count: next.length };
   }
@@ -117,6 +113,7 @@ async function processWebhook(runtimeEnv, update) {
 
   await container.rememberUpdate(update);
 
+  // Only real group/channel events can enter the work-chat registry.
   if (type === "bot_removed" && chatId != null) {
     await container.forgetChat(chatId);
   } else if (type === "bot_added" && chatId != null) {
@@ -158,33 +155,26 @@ export default {
       const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 
       if (url.pathname === "/max-webhook") {
-        if (request.method === "GET") {
-          return Response.json({ ok: true, webhook: "ready", workerVersion: WORKER_VERSION });
-        }
+        if (request.method === "GET") return Response.json({ ok: true, webhook: "ready", workerVersion: WORKER_VERSION });
         if (request.method === "POST") {
           let update = {};
-          try { update = await request.json(); }
-          catch { return new Response("Bad JSON", { status: 400 }); }
+          try { update = await request.json(); } catch { return new Response("Bad JSON", { status: 400 }); }
           ctx.waitUntil(processWebhook(runtimeEnv, update).catch((error) => console.error("MAX webhook processing error", error)));
           return Response.json({ ok: true });
         }
         return new Response("Method not allowed", { status: 405 });
       }
 
-      // This page never calls platform-api2.max.ru from Cloudflare edge.
-      // It starts the trusted Linux container in the background; that container has the MinDigital CA.
       if (url.pathname === "/diagnostic") {
         const [knownChats, recentUpdates, runtime] = await Promise.all([
           container.getKnownChats(),
           container.getRecentUpdates(),
           container.getRuntimeState(),
         ]);
-        ctx.waitUntil(
-          (async () => {
-            await container.resetRuntimeOnce(WORKER_VERSION);
-            await containerHealth(runtimeEnv);
-          })().catch((error) => console.error("Background container start error", error)),
-        );
+        ctx.waitUntil((async () => {
+          await container.resetRuntimeOnce(WORKER_VERSION);
+          await containerHealth(runtimeEnv);
+        })().catch((error) => console.error("Background container start error", error)));
         return Response.json({
           ok: true,
           workerVersion: WORKER_VERSION,
