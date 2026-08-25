@@ -6,7 +6,7 @@ const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev"
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 6;
-const WORKER_VERSION = "worker-v45-gigachat-schema-fixed";
+const WORKER_VERSION = "worker-v46-resilient-full-history";
 const STALE_CHAT_IDS = new Set(["-77765742260432"]);
 const CURRENT_CHAT_ID = "-77828005225953";
 
@@ -43,7 +43,10 @@ export class MaxBotContainer extends Container {
     await this.ensureRegistryVersion();
     const current = (await this.ctx.storage.get("known_chats")) || [];
     const filtered = current.filter((x) => !isStaleChatId(x?.chat_id));
-    if (filtered.length !== current.length) await this.ctx.storage.put("known_chats", filtered);
+    if (!filtered.some((x) => String(x?.chat_id) === CURRENT_CHAT_ID)) {
+      filtered.push({ chat_id: CURRENT_CHAT_ID, title: "Взлёт- Амиди", lastSeenAt: Date.now() });
+    }
+    if (filtered.length !== current.length || !current.some((x) => String(x?.chat_id) === CURRENT_CHAT_ID)) await this.ctx.storage.put("known_chats", filtered);
     return filtered;
   }
 
@@ -52,6 +55,7 @@ export class MaxBotContainer extends Container {
     const safe = (Array.isArray(chats) ? chats : [])
       .filter((x) => !isStaleChatId(x?.chat_id))
       .slice(0, 500);
+    if (!safe.some((x) => String(x?.chat_id) === CURRENT_CHAT_ID)) safe.push({ chat_id: CURRENT_CHAT_ID, title: "Взлёт- Амиди", lastSeenAt: Date.now() });
     await this.ctx.storage.put("known_chats", safe);
     return { ok: true, count: safe.length };
   }
@@ -68,7 +72,7 @@ export class MaxBotContainer extends Container {
   }
 
   async forgetChat(chatId) {
-    if (chatId == null) return { ok: true };
+    if (chatId == null || String(chatId) === CURRENT_CHAT_ID) return { ok: true };
     const id = String(chatId);
     const chats = await this.getKnownChats();
     const next = chats.filter((x) => String(x?.chat_id) !== id);
