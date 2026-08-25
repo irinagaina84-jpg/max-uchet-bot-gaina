@@ -5,8 +5,19 @@ const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
+const MAX_API = "https://platform-api2.max.ru";
 const CHAT_REGISTRY_VERSION = 3;
-const WORKER_VERSION = "worker-v31-clean-restart";
+const WORKER_VERSION = "worker-v32-edge-webhook";
+const MAX_UPDATE_TYPES = [
+  "message_created",
+  "message_edited",
+  "message_removed",
+  "bot_added",
+  "bot_removed",
+  "chat_title_changed",
+  "bot_started",
+  "bot_stopped"
+];
 
 export class MaxBotContainer extends Container {
   defaultPort = 3000;
@@ -87,10 +98,7 @@ export class MaxBotContainer extends Container {
   }
 
   async getRuntimeState() {
-    return {
-      running: Boolean(this.ctx.container.running),
-      workerVersion: WORKER_VERSION,
-    };
+    return { running: Boolean(this.ctx.container.running), workerVersion: WORKER_VERSION };
   }
 
   async resetRuntimeOnce(version) {
@@ -102,6 +110,42 @@ export class MaxBotContainer extends Container {
     if (wasRunning) await this.destroy();
     return { reset: true, wasRunning };
   }
+}
+
+async function maxApi(runtimeEnv, path, { method = "GET", body = null } = {}) {
+  const response = await fetch(`${MAX_API}${path}`, {
+    method,
+    headers: {
+      Authorization: runtimeEnv.MAX_BOT_TOKEN,
+      Accept: "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  if (!response.ok) throw new Error(`MAX ${response.status}: ${data?.message || data?.error || text || response.statusText}`);
+  return data;
+}
+
+function safeSubscriptions(data) {
+  const list = Array.isArray(data?.subscriptions) ? data.subscriptions : [];
+  return list.map((s) => ({
+    url: String(s?.url || ""),
+    update_types: Array.isArray(s?.update_types) ? s.update_types : [],
+  }));
+}
+
+async function ensureMaxWebhook(runtimeEnv) {
+  const targetUrl = runtimeEnv.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL;
+  const result = await maxApi(runtimeEnv, "/subscriptions", {
+    method: "POST",
+    body: { url: targetUrl, update_types: MAX_UPDATE_TYPES },
+  });
+  if (result?.success === false) throw new Error(result?.message || "MAX subscription returned success=false");
+  const current = await maxApi(runtimeEnv, "/subscriptions");
+  return { ok: true, targetUrl, subscriptions: safeSubscriptions(current) };
 }
 
 function eventChatId(update) {
@@ -130,7 +174,6 @@ async function processWebhook(runtimeEnv, update) {
     await container.rememberChat(chatId, null);
   }
 
-  // Storage is updated before the bot process is touched. The webhook remains useful even if the process is restarting.
   try {
     await container.fetch(new Request("http://container/update", {
       method: "POST",
@@ -152,6 +195,7 @@ async function containerHealth(runtimeEnv) {
 async function pingContainer(runtimeEnv) {
   const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
   await container.resetRuntimeOnce(WORKER_VERSION);
+  await ensureMaxWebhook(runtimeEnv);
   await containerHealth(runtimeEnv);
 }
 
@@ -175,8 +219,12 @@ export default {
         return new Response("Method not allowed", { status: 405 });
       }
 
-      // Lightweight diagnostic: DOES NOT start or contact the Linux container process.
       if (url.pathname === "/diagnostic") {
+        let maxWebhook = null;
+        let maxWebhookError = null;
+        try { maxWebhook = await ensureMaxWebhook(runtimeEnv); }
+        catch (error) { maxWebhookError = String(error?.message || error); }
+
         const [knownChats, recentUpdates, runtime] = await Promise.all([
           container.getKnownChats(),
           container.getRecentUpdates(),
@@ -187,7 +235,9 @@ export default {
           ok: true,
           workerVersion: WORKER_VERSION,
           transport: "webhook",
-          webhookUrl: DEFAULT_WEBHOOK_URL,
+          webhookUrl: runtimeEnv.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
+          maxWebhook,
+          maxWebhookError,
           registryVersion: CHAT_REGISTRY_VERSION,
           knownChatCount: knownChats.length,
           knownChats,
