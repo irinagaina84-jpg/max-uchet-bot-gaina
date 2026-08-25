@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v46-resilient-full-history-20260825-1
+ENV BOT_IMAGE_REVISION=v47-accounting-scope-20260825-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -11,11 +11,13 @@ COPY patch-v14-silent.mjs ./patch-v14-silent.mjs
 COPY patch-v14-webhook.mjs ./patch-v14-webhook.mjs
 COPY patch-v14-block-stale.mjs ./patch-v14-block-stale.mjs
 COPY patch-v14-max-history.mjs ./patch-v14-max-history.mjs
+COPY patch-v14-freshscope.mjs ./patch-v14-freshscope.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
 RUN node patch-v14-block-stale.mjs
 RUN node patch-v14-max-history.mjs
+RUN node patch-v14-freshscope.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
