@@ -1,3 +1,4 @@
+// Cloudflare rebuild trigger: 2026-08-26 v49
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
