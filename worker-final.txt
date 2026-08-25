@@ -6,8 +6,9 @@ const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev"
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 6;
-const WORKER_VERSION = "worker-v42-max-history-fixed";
+const WORKER_VERSION = "worker-v42-current-chat-seeded";
 const STALE_CHAT_IDS = new Set(["-77765742260432"]);
+const CURRENT_CHAT_ID = "-77828005225953";
 
 function isStaleChatId(value) {
   return STALE_CHAT_IDS.has(String(value ?? ""));
@@ -22,7 +23,7 @@ export class MaxBotContainer extends Container {
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     REPORT_USER_ID: env.REPORT_USER_ID || "",
-    WATCH_CHAT_IDS: "",
+    WATCH_CHAT_IDS: CURRENT_CHAT_ID,
     ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
     STATE_URL: env.STATE_URL || DEFAULT_STATE_URL,
     MAX_WEBHOOK_URL: env.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
