@@ -9,9 +9,11 @@ COPY patch-v14-fullchat.mjs ./patch-v14-fullchat.mjs
 COPY patch-v14-silent.mjs ./patch-v14-silent.mjs
 COPY patch-v14-webhook.mjs ./patch-v14-webhook.mjs
 COPY patch-v14-block-stale.mjs ./patch-v14-block-stale.mjs
+COPY patch-v14-max-history.mjs ./patch-v14-max-history.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
 RUN node patch-v14-block-stale.mjs
+RUN node patch-v14-max-history.mjs
 EXPOSE 3000
 CMD ["node", "bot.js"]
