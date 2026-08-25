@@ -1,4 +1,4 @@
-name: Verify MAX bot v46
+name: Verify MAX bot v47
 
 on:
   push:
@@ -28,15 +28,16 @@ jobs:
           node patch-v14-webhook.mjs
           node patch-v14-block-stale.mjs
           node patch-v14-max-history.mjs
+          node patch-v14-freshscope.mjs
           node --check bot.js
-          grep -q 'v46-resilient-full-history' bot.js
-          echo 'v46 bot.js built and parsed successfully'
+          grep -q 'v47-accounting-scope' bot.js
+          echo 'v47 bot.js built and parsed successfully'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for v46 with current chat
+      - name: Wait for v47 with current chat only
         shell: bash
         run: |
           set -euo pipefail
@@ -48,15 +49,18 @@ jobs:
             FULL="$(curl -fsS --max-time 20 "$FULL_URL" || true)"
             echo "Attempt $i diagnostic: $DIAG"
             echo "Attempt $i full: $FULL"
-            if echo "$FULL" | grep -q '"workerVersion":"worker-v46-resilient-full-history"' \
-              && echo "$FULL" | grep -q '"version":"v46-resilient-full-history"' \
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v47-accounting-scope"' \
+              && echo "$DIAG" | grep -q '"currentChatId":"-77828005225953"' \
+              && echo "$DIAG" | grep -q -- '-77828005225953' \
+              && ! echo "$DIAG" | grep -q '"chat_id":"-77765742260432"' \
+              && echo "$FULL" | grep -q '"version":"v47-accounting-scope"' \
               && echo "$FULL" | grep -q '"maxAuthorized":true' \
               && echo "$FULL" | grep -q '"gigachatAuthorized":true' \
               && echo "$FULL" | grep -Eq '"knownGroupCount":[1-9][0-9]*'; then
-              echo 'Cloudflare v46 is live with current chat'
+              echo 'Cloudflare v47 is live with the current MAX accounting chat and stale chat excluded'
               exit 0
             fi
             sleep 13
           done
-          echo 'Cloudflare did not reach v46 within 6 minutes'
+          echo 'Cloudflare did not reach v47 within 6 minutes'
           exit 1
