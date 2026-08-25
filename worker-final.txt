@@ -6,7 +6,7 @@ const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev"
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 6;
-const WORKER_VERSION = "worker-v42-max-history-fixed";
+const WORKER_VERSION = "worker-v43-history-access-diagnostic";
 const STALE_CHAT_IDS = new Set(["-77765742260432"]);
 
 function isStaleChatId(value) {
