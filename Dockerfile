@@ -15,6 +15,5 @@ RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
 RUN node patch-v14-block-stale.mjs
 RUN node patch-v14-max-history.mjs
-RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]

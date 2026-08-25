@@ -1,4 +1,4 @@
-name: Verify Cloudflare rollout
+name: Verify Cloudflare rollback
 
 on:
   push:
@@ -12,7 +12,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for safe v44 rollout
+      - name: Wait for known-good v42 rollout
         shell: bash
         run: |
           set -euo pipefail
@@ -20,12 +20,14 @@ jobs:
           for i in $(seq 1 24); do
             BODY="$(curl -fsS --max-time 20 "$URL" || true)"
             echo "Attempt $i: $BODY"
-            if echo "$BODY" | grep -q '"workerVersion":"worker-v43-history-access-diagnostic"' \
-              && echo "$BODY" | grep -q '"version":"v44-current-chat-history"'; then
-              echo "Cloudflare safe v44 container is live"
+            if echo "$BODY" | grep -q '"workerVersion":"worker-v42-max-history-fixed"' \
+              && echo "$BODY" | grep -q '"version":"v42-max-history-fixed"' \
+              && echo "$BODY" | grep -q '"maxAuthorized":true' \
+              && echo "$BODY" | grep -q '"gigachatAuthorized":true'; then
+              echo "Cloudflare known-good v42 is live"
               exit 0
             fi
             sleep 15
           done
-          echo "Cloudflare did not reach safe v44 within 6 minutes"
+          echo "Cloudflare did not return to known-good v42 within 6 minutes"
           exit 1
