@@ -5,9 +5,10 @@ const CONTAINER_INSTANCE = "production";
 const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev";
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
-const CHAT_REGISTRY_VERSION = 5;
-const WORKER_VERSION = "worker-v40-fresh-scope";
+const CHAT_REGISTRY_VERSION = 7;
+const WORKER_VERSION = "worker-v47-accounting-scope";
 const STALE_CHAT_IDS = new Set(["-77765742260432"]);
+const CURRENT_CHAT_ID = "-77828005225953";
 
 function isStaleChatId(value) {
   return STALE_CHAT_IDS.has(String(value ?? ""));
@@ -22,7 +23,7 @@ export class MaxBotContainer extends Container {
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
     REPORT_USER_ID: env.REPORT_USER_ID || "",
-    WATCH_CHAT_IDS: "",
+    WATCH_CHAT_IDS: CURRENT_CHAT_ID,
     ACCOUNTING_TZ_OFFSET_MINUTES: env.ACCOUNTING_TZ_OFFSET_MINUTES || "300",
     STATE_URL: env.STATE_URL || DEFAULT_STATE_URL,
     MAX_WEBHOOK_URL: env.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
@@ -33,7 +34,7 @@ export class MaxBotContainer extends Container {
     const current = await this.ctx.storage.get("chat_registry_version");
     if (current !== CHAT_REGISTRY_VERSION) {
       await this.ctx.storage.put("chat_registry_version", CHAT_REGISTRY_VERSION);
-      await this.ctx.storage.put("known_chats", []);
+      await this.ctx.storage.put("known_chats", [{ chat_id: CURRENT_CHAT_ID, title: `чат ${CURRENT_CHAT_ID}`, lastSeenAt: Date.now() }]);
       await this.ctx.storage.put("recent_updates", []);
     }
   }
@@ -42,7 +43,10 @@ export class MaxBotContainer extends Container {
     await this.ensureRegistryVersion();
     const current = (await this.ctx.storage.get("known_chats")) || [];
     const filtered = current.filter((x) => !isStaleChatId(x?.chat_id));
-    if (filtered.length !== current.length) await this.ctx.storage.put("known_chats", filtered);
+    if (!filtered.some((x) => String(x?.chat_id) === CURRENT_CHAT_ID)) {
+      filtered.push({ chat_id: CURRENT_CHAT_ID, title: `чат ${CURRENT_CHAT_ID}`, lastSeenAt: Date.now() });
+    }
+    if (JSON.stringify(filtered) !== JSON.stringify(current)) await this.ctx.storage.put("known_chats", filtered);
     return filtered;
   }
 
@@ -51,6 +55,9 @@ export class MaxBotContainer extends Container {
     const safe = (Array.isArray(chats) ? chats : [])
       .filter((x) => !isStaleChatId(x?.chat_id))
       .slice(0, 500);
+    if (!safe.some((x) => String(x?.chat_id) === CURRENT_CHAT_ID)) {
+      safe.push({ chat_id: CURRENT_CHAT_ID, title: `чат ${CURRENT_CHAT_ID}`, lastSeenAt: Date.now() });
+    }
     await this.ctx.storage.put("known_chats", safe);
     return { ok: true, count: safe.length };
   }
@@ -71,6 +78,9 @@ export class MaxBotContainer extends Container {
     const id = String(chatId);
     const chats = await this.getKnownChats();
     const next = chats.filter((x) => String(x?.chat_id) !== id);
+    if (id === CURRENT_CHAT_ID) {
+      next.push({ chat_id: CURRENT_CHAT_ID, title: `чат ${CURRENT_CHAT_ID}`, lastSeenAt: Date.now() });
+    }
     await this.ctx.storage.put("known_chats", next);
     return { ok: true, count: next.length };
   }
@@ -191,6 +201,7 @@ export default {
           webhookUrl: runtimeEnv.MAX_WEBHOOK_URL || DEFAULT_WEBHOOK_URL,
           maxApiTransport: "trusted-container",
           staleChatFilter: [...STALE_CHAT_IDS],
+          currentChatId: CURRENT_CHAT_ID,
           registryVersion: CHAT_REGISTRY_VERSION,
           knownChatCount: knownChats.length,
           knownChats,
@@ -201,7 +212,7 @@ export default {
 
       if (url.pathname === "/diagnostic/full") {
         const health = await containerHealth(runtimeEnv);
-        return Response.json({ ok: true, workerVersion: WORKER_VERSION, container: health });
+        return Response.json({ ok: true, workerVersion: WORKER_VERSION, currentChatId: CURRENT_CHAT_ID, container: health });
       }
 
       if (url.pathname === "/state") {
@@ -211,7 +222,7 @@ export default {
         return new Response("Method not allowed", { status: 405 });
       }
 
-      return Response.json({ ok: true, workerVersion: WORKER_VERSION });
+      return Response.json({ ok: true, workerVersion: WORKER_VERSION, currentChatId: CURRENT_CHAT_ID });
     } catch (error) {
       console.error("Worker error", error);
       return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 });
