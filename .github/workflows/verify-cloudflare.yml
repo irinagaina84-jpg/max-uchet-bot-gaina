@@ -12,7 +12,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for v43 rollout
+      - name: Wait for safe v44 rollout
         shell: bash
         run: |
           set -euo pipefail
@@ -21,11 +21,11 @@ jobs:
             BODY="$(curl -fsS --max-time 20 "$URL" || true)"
             echo "Attempt $i: $BODY"
             if echo "$BODY" | grep -q '"workerVersion":"worker-v43-history-access-diagnostic"' \
-              && echo "$BODY" | grep -q '"version":"v43-history-access-diagnostic"'; then
-              echo "Cloudflare v43 worker and container are live"
+              && echo "$BODY" | grep -q '"version":"v44-current-chat-history"'; then
+              echo "Cloudflare safe v44 container is live"
               exit 0
             fi
             sleep 15
           done
-          echo "Cloudflare did not reach v43 within 6 minutes"
+          echo "Cloudflare did not reach safe v44 within 6 minutes"
           exit 1
