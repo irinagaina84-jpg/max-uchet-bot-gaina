@@ -2,6 +2,8 @@ import fs from "node:fs";
 
 const path = "./bot.js";
 const BLOCKED_CHAT_ID = "-77765742260432";
+const CURRENT_CHAT_ID = "-77828005225953";
+const CURRENT_CHAT_TITLE = "Взлёт-Амиди";
 let code = fs.readFileSync(path, "utf8");
 
 function replaceAllSafe(oldText, newText, label) {
@@ -44,6 +46,14 @@ replaceAllSafe(
   'set guard'
 );
 
-code = code.replace(/version:\s*"v[^"]+",/, 'version: "v41-current-chat-only",');
+const seedAnchor = 'const privateDialog = [];';
+if (code.includes(seedAnchor) && !code.includes('PINNED_CURRENT_CHAT')) {
+  code = code.replace(seedAnchor,
+    `const privateDialog = [];\nconst PINNED_CURRENT_CHAT = "${CURRENT_CHAT_ID}";\nknownGroups.set(PINNED_CURRENT_CHAT, { title: "${CURRENT_CHAT_TITLE}", lastSeenAt: Date.now() });`
+  );
+  console.log('blocked-chat patched: pinned current chat');
+}
+
+code = code.replace(/version:\s*"v[^"]+",/, 'version: "v44-current-chat-history"');
 fs.writeFileSync(path, code);
-console.log('stale MAX chat is hard-blocked inside bot runtime');
+console.log('stale MAX chat blocked and current work chat pinned');
