@@ -1,0 +1,19 @@
+name: Build current MAX bot
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-current:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build Docker image exactly as Cloudflare container
+        run: docker build --no-cache -t max-uchet-bot-current .
