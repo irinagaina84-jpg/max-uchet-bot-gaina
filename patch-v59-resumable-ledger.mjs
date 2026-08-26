@@ -62,8 +62,11 @@ const oldLoop = [
 const newLoop = [
   '    const usingOpenAI = Boolean(state.openaiAuthorized);',
   '    const size = usingOpenAI ? 56 : 14; const overlap = usingOpenAI ? 6 : 3; const step = Math.max(1, size - overlap);',
-  '    const savedProcessed = Math.max(Number(remote?.state?.processed || 0), Number(state.ledgerBackfillProcessed || 0));',
-  '    let processed = Math.min(history.length, savedProcessed);',
+  '    const persistedProcessed = Math.max(Number(remote?.state?.processed || 0), Number(state.ledgerBackfillProcessed || 0));',
+  '    const recoveryFloor = String(chatId) === "-77828005225953" && history.length >= 858 ? 256 : 0;',
+  '    const savedProcessed = Math.max(persistedProcessed, recoveryFloor);',
+  '    let processed = Math.min(history.length, savedProcessed); state.ledgerBackfillProcessed = processed;',
+  '    if (processed > persistedProcessed) await ledgerRequest("/state", { method: "POST", body: { chat_id: String(chatId), state: { complete: false, phase: "recovered", processed, total: history.length, parser_version: LEDGER_PARSER_VERSION, provider: state.openaiAuthorized ? ("openai:" + OPENAI_MODEL) : ("gigachat-fallback:" + GIGA_MODEL), last_error: null } }, timeout: 30000 });',
   '    for (let newStart = processed; newStart < history.length; newStart += step) {',
   '      const contextStart = Math.max(0, newStart - overlap);',
   '      const newEnd = Math.min(history.length, newStart + step);',
@@ -88,7 +91,7 @@ replaceOnce(
 
 code = code.replace(/version:\s*"v[^"]+",/, 'version: "v59-resumable-ledger",');
 if (code.includes('openaiQuotaFastFallback: true,') && !code.includes('resumableLedgerBackfill: true,')) {
-  code = code.replace('openaiQuotaFastFallback: true,', 'openaiQuotaFastFallback: true,\n  resumableLedgerBackfill: true,\n  immutableProcessedLedger: true,\n  adaptiveLedgerChunkSplit: true,');
+  code = code.replace('openaiQuotaFastFallback: true,', 'openaiQuotaFastFallback: true,\n  resumableLedgerBackfill: true,\n  immutableProcessedLedger: true,\n  adaptiveLedgerChunkSplit: true,\n  recoveredBackfillFloor: 256,');
 }
 
 fs.writeFileSync(path, code);
