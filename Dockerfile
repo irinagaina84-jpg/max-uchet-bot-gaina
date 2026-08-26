@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v57-ledger-backfill-gate-20260826-1
+ENV BOT_IMAGE_REVISION=v58-openai-quota-fallback-20260826-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -23,6 +23,7 @@ COPY patch-v56-ledger-compat.mjs ./patch-v56-ledger-compat.mjs
 COPY patch-v14-persistent-ledger-v2.mjs ./patch-v14-persistent-ledger-v2.mjs
 COPY patch-v56-ledger-safety.mjs ./patch-v56-ledger-safety.mjs
 COPY patch-v57-ledger-backfill-gate.mjs ./patch-v57-ledger-backfill-gate.mjs
+COPY patch-v58-openai-quota-fallback.mjs ./patch-v58-openai-quota-fallback.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -40,6 +41,7 @@ RUN node patch-v56-ledger-compat.mjs
 RUN node patch-v14-persistent-ledger-v2.mjs
 RUN node patch-v56-ledger-safety.mjs
 RUN node patch-v57-ledger-backfill-gate.mjs
+RUN node patch-v58-openai-quota-fallback.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
