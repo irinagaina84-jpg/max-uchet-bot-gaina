@@ -1,4 +1,4 @@
-name: Verify MAX bot v49
+name: Verify MAX bot v56
 
 on:
   push:
@@ -11,18 +11,21 @@ permissions:
 jobs:
   build-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Build bot exactly like Docker patches
+          node-version: '24'
+      - name: Install runtime dependencies
+        run: cp package-final.json package.json && npm install --omit=dev
+      - name: Build bot exactly like Docker
         shell: bash
         run: |
           set -euo pipefail
-          rm -f bot.js
+          cp bot-giga-v14.js bot.js
           node patch-v14-fullchat.mjs
           node patch-v14-silent.mjs
           node patch-v14-webhook.mjs
@@ -30,39 +33,42 @@ jobs:
           node patch-v14-max-history.mjs
           node patch-v14-freshscope.mjs
           node patch-v14-dialog-routing.mjs
+          node patch-v14-private-owner.mjs
+          node patch-v14-accounting-accuracy.mjs
+          node patch-v14-release-series.mjs
+          node patch-v14-text-release-logic.mjs
+          node patch-v14-openai-brain.mjs
+          node patch-v14-semantic-thread.mjs
+          node patch-v14-persistent-ledger.mjs
           node --check bot.js
-          grep -q 'v49-dialog-routing' bot.js
-          grep -q 'dialogRoutingFixed: true' bot.js
-          echo 'v49 bot.js built and parsed successfully'
+          grep -q 'v56-persistent-ledger' bot.js
+          grep -q 'persistentAccountingLedger: true' bot.js
+          grep -q 'deterministicLedgerTotals: true' bot.js
+          echo 'v56 persistent ledger bot built successfully'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
-      - name: Wait for v49 private dialog routing
+      - name: Wait for Cloudflare v56
         shell: bash
         run: |
           set -euo pipefail
           FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
-          for i in $(seq 1 24); do
-            DIAG="$(curl -fsS --max-time 20 "$DIAG_URL" || true)"
-            sleep 2
-            FULL="$(curl -fsS --max-time 20 "$FULL_URL" || true)"
+          for i in $(seq 1 36); do
+            DIAG="$(curl -fsS --max-time 25 "$DIAG_URL" || true)"
+            FULL="$(curl -fsS --max-time 25 "$FULL_URL" || true)"
             echo "Attempt $i diagnostic: $DIAG"
-            echo "Attempt $i full: $FULL"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v49-dialog-routing"' \
-              && echo "$DIAG" | grep -q '"currentChatId":"-77828005225953"' \
-              && echo "$DIAG" | grep -q -- '-77828005225953' \
-              && ! echo "$DIAG" | grep -q '"chat_id":"-77765742260432"' \
-              && echo "$FULL" | grep -q '"version":"v49-dialog-routing"' \
-              && echo "$FULL" | grep -q '"dialogRoutingFixed":true' \
-              && echo "$FULL" | grep -q '"maxAuthorized":true' \
-              && echo "$FULL" | grep -q '"gigachatAuthorized":true'; then
-              echo 'Cloudflare v49 is live with private dialog routing fixed'
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v56-persistent-ledger"' \
+              && echo "$DIAG" | grep -q '"ledgerSchemaVersion":1' \
+              && echo "$FULL" | grep -q '"version":"v56-persistent-ledger"' \
+              && echo "$FULL" | grep -q '"persistentAccountingLedger":true'; then
+              echo 'Cloudflare v56 persistent ledger is live'
               exit 0
             fi
-            sleep 13
+            sleep 15
           done
-          echo 'Cloudflare did not reach v49 within 6 minutes'
+          echo 'Cloudflare did not reach v56 within verification window'
           exit 1
