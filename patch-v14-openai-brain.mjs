@@ -121,7 +121,7 @@ async function gigaJson(messages, schema) {
   const finishReason = String(choice?.finish_reason || "");
   const text = String(choice?.message?.content || "{}").trim();
   if (finishReason && finishReason !== "stop") throw new Error("GigaChat structured output incomplete: finish_reason=" + finishReason);
-  const candidates = [text, text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()];
+  const candidates = [text, text.replace(/^\s*\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60\s*$/, "").trim()];
   const unfenced = candidates[1];
   const first = unfenced.indexOf("{");
   const last = unfenced.lastIndexOf("}");
