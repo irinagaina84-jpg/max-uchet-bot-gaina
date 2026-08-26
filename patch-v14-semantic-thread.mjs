@@ -108,6 +108,11 @@ code = code.split("HINT[...] сформирован детерминирован
   "HINT[...] сформирован детерминированным парсером: используй его как сильную подсказку. Для status=LIKELY_RELEASE_CODES_BY_CHAT_STRUCTURE считай шестизначные коды вероятными релизами по структуре соседних сообщений. Реплика status=DISPUTE_NOT_FINAL_UNTIL_LATER_CONTEXT_RESOLVES означает только спор: проверь более поздние сообщения и примени итоговое разрешенное состояние, а не сам факт отрицательной фразы."
 );
 
+// Some older prompt fragments used Markdown backticks inside JavaScript template literals.
+// They are formatting only and break the generated bot source after patching.
+code = code.split('`series=<название серии>`').join('series=<название серии>');
+code = code.split('`series=<название>`').join('series=<название>');
+
 code = code.replace(/version:\s*"v[^"]+",/, 'version: "v55-semantic-thread",');
 code = code.replace(
   "incrementalChunkCache: true,",
