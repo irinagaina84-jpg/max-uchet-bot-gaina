@@ -1,4 +1,4 @@
-// Cloudflare rebuild trigger: 2026-08-26 v49 after build-settings fix
+// Cloudflare rebuild trigger: 2026-08-26 v54 OpenAI brain
 import { env } from "cloudflare:workers";
 import { Container, getContainer } from "@cloudflare/containers";
 
@@ -7,7 +7,7 @@ const PUBLIC_BASE = "https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev"
 const DEFAULT_STATE_URL = `${PUBLIC_BASE}/state`;
 const DEFAULT_WEBHOOK_URL = `${PUBLIC_BASE}/max-webhook`;
 const CHAT_REGISTRY_VERSION = 7;
-const WORKER_VERSION = "worker-v49-dialog-routing";
+const WORKER_VERSION = "worker-v54-openai-brain";
 const STALE_CHAT_IDS = new Set(["-77765742260432"]);
 const CURRENT_CHAT_ID = "-77828005225953";
 
@@ -20,6 +20,8 @@ export class MaxBotContainer extends Container {
   sleepAfter = "10m";
   envVars = {
     MAX_BOT_TOKEN: env.MAX_BOT_TOKEN,
+    OPENAI_API_KEY: env.OPENAI_API_KEY || "",
+    OPENAI_MODEL: env.OPENAI_MODEL || "gpt-5.6-sol",
     GIGACHAT_AUTH_KEY: env.GIGACHAT_AUTH_KEY,
     GIGACHAT_SCOPE: env.GIGACHAT_SCOPE || "GIGACHAT_API_PERS",
     GIGACHAT_MODEL: env.GIGACHAT_MODEL || "GigaChat-3-Ultra",
