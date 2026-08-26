@@ -39,6 +39,7 @@ jobs:
           node patch-v14-text-release-logic.mjs
           node patch-v14-openai-brain.mjs
           node patch-v14-semantic-thread.mjs
+          node patch-v56-ledger-compat.mjs
           node patch-v14-persistent-ledger-v2.mjs
           node patch-v56-ledger-safety.mjs
           node --check bot.js
