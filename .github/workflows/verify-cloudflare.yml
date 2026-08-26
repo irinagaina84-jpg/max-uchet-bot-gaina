@@ -1,4 +1,4 @@
-name: Verify MAX bot v56
+name: Verify MAX bot v57
 
 on:
   push:
@@ -42,36 +42,51 @@ jobs:
           node patch-v56-ledger-compat.mjs
           node patch-v14-persistent-ledger-v2.mjs
           node patch-v56-ledger-safety.mjs
+          node patch-v57-ledger-backfill-gate.mjs
           node --check bot.js
-          grep -q 'v56-persistent-ledger' bot.js
-          grep -q 'v56-ledger-parser-2' bot.js
+          node --check worker.js
+          node --check worker-v57.js
+          grep -q 'v57-ledger-backfill-gate' bot.js
+          grep -q 'v57-ledger-parser' bot.js
+          grep -q 'ledgerBackfillGate: true' bot.js
           grep -q 'persistentAccountingLedger: true' bot.js
           grep -q 'deterministicLedgerTotals: true' bot.js
-          echo 'v56 persistent ledger bot built successfully'
+          grep -q '"main": "worker-v57.js"' wrangler.jsonc
+          echo 'v57 ledger backfill gate built successfully'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Wait for Cloudflare v56
+      - name: Wait for Cloudflare v57 and backfill start
         shell: bash
         run: |
           set -euo pipefail
           FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
-          for i in $(seq 1 36); do
-            DIAG="$(curl -fsS --max-time 25 "$DIAG_URL" || true)"
-            FULL="$(curl -fsS --max-time 25 "$FULL_URL" || true)"
+          VERSION_OK=0
+          for i in $(seq 1 40); do
+            DIAG="$(curl -fsS --max-time 30 "$DIAG_URL" || true)"
+            FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
             echo "Attempt $i diagnostic: $DIAG"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v56-persistent-ledger"' \
-              && echo "$DIAG" | grep -q '"ledgerSchemaVersion":1' \
-              && echo "$FULL" | grep -q '"version":"v56-persistent-ledger"' \
+            echo "Attempt $i full: $FULL"
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v57-ledger-backfill-gate"' \
+              && echo "$FULL" | grep -q '"version":"v57-ledger-backfill-gate"' \
+              && echo "$FULL" | grep -q '"ledgerBackfillGate":true' \
               && echo "$FULL" | grep -q '"persistentAccountingLedger":true'; then
-              echo 'Cloudflare v56 persistent ledger is live'
-              exit 0
+              VERSION_OK=1
+              if echo "$DIAG" | grep -Eq '"backfill":\{[^}]*"(phase|processed|complete)"' \
+                || echo "$DIAG" | grep -Eq '"event_count":[1-9][0-9]*'; then
+                echo 'Cloudflare v57 is live and ledger backfill has started'
+                exit 0
+              fi
             fi
             sleep 15
           done
-          echo 'Cloudflare did not reach v56 within verification window'
+          if [ "$VERSION_OK" -eq 1 ]; then
+            echo 'v57 is live but ledger backfill did not start'
+          else
+            echo 'Cloudflare did not reach v57 within verification window'
+          fi
           exit 1
