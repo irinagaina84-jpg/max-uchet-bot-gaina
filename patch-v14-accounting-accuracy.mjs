@@ -9,6 +9,15 @@ function replaceOnce(oldText, newText, label) {
   console.log(`accuracy patched: ${label}`);
 }
 
+function replaceOptional(oldText, newText, label) {
+  if (!code.includes(oldText)) {
+    console.log(`accuracy skipped: ${label}`);
+    return;
+  }
+  code = code.replace(oldText, newText);
+  console.log(`accuracy patched: ${label}`);
+}
+
 function replaceRegex(pattern, replacement, label) {
   if (!pattern.test(code)) throw new Error(`accuracy patch regex anchor not found: ${label}`);
   code = code.replace(pattern, replacement);
@@ -71,12 +80,7 @@ const safeChunkNew = `async function extractChunkSafe(chatTitle, rows, depth = 0
     const message = errText(error);
     const status = Number(error?.status || (String(message).match(/^(\\d{3}):/)?.[1] || 0));
     console.error(\`extractChunkSafe depth=\${depth} rows=\${rows.length}: \${message}\`);
-
-    // A rate-limit must NEVER turn into missing accounting data.
-    // gigaRaw already retries with backoff; if it still fails, fail the calculation explicitly.
     if (status === 429) throw error;
-
-    // Split only malformed/oversized structured responses, not transport/rate-limit errors.
     if (rows.length > 3 && depth < 6) {
       const mid = Math.ceil(rows.length / 2);
       const left = await extractChunkSafe(chatTitle, rows.slice(0, mid), depth + 1);
@@ -124,7 +128,6 @@ async function extractChat(chatId, title, start, end) {
   if (cached && Date.now() - cached.at < EXTRACTION_CACHE_TTL_MS) {
     return { ...cached.value, cacheHit: true };
   }
-
   let imageCount = 0;
   const events = [];
   for (const part of chunkRows(history)) {
@@ -132,7 +135,6 @@ async function extractChat(chatId, title, start, end) {
     imageCount += Number(r.imageCount || 0);
     events.push(...(r.events || []));
   }
-
   const value = { historyCount: history.length, imageCount, events };
   extractionCache.set(cacheKey, { at: Date.now(), value });
   while (extractionCache.size > 12) extractionCache.delete(extractionCache.keys().next().value);
@@ -163,13 +165,13 @@ replaceOnce(
   'release total semantics'
 );
 
-replaceOnce(
+replaceOptional(
   'Если вопрос «выпиши по Взлёту» — сначала дай подтвержденный факт выдачи по Взлёту, затем отдельно «Только релизы / ещё не подтверждено».',
   'Если вопрос «выпиши по Взлёту» — дай единый оперативный итог активных релизов и подтвержденных выдач по Взлёту, после дедупликации и учета всех отмен/замен. Отдельно показывай только настоящую бронь/план без опубликованного релиза.',
   'Vzlet operational total semantics'
 );
 
-replaceOnce(
+replaceOptional(
   'state.lastExtractedEvents = extractions.reduce((s,x)=>s+x.events.length,0);',
   'state.lastExtractedEvents = extractions.reduce((s,x)=>s+x.events.length,0); state.lastCacheHits = extractions.filter((x) => x.cacheHit).length;',
   'cache diagnostics'
