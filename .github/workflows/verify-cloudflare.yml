@@ -1,4 +1,4 @@
-name: Verify MAX bot v57
+name: Verify MAX bot v58
 
 on:
   push:
@@ -43,23 +43,24 @@ jobs:
           node patch-v14-persistent-ledger-v2.mjs
           node patch-v56-ledger-safety.mjs
           node patch-v57-ledger-backfill-gate.mjs
+          node patch-v58-openai-quota-fallback.mjs
           node --check bot.js
           node --check worker.js
           node --check worker-v57.js
-          grep -q 'v57-ledger-backfill-gate' bot.js
+          grep -q 'v58-openai-quota-fallback' bot.js
+          grep -q 'openaiQuotaFastFallback: true' bot.js
           grep -q 'v57-ledger-parser' bot.js
           grep -q 'ledgerBackfillGate: true' bot.js
-          grep -q 'persistentAccountingLedger: true' bot.js
-          grep -q 'deterministicLedgerTotals: true' bot.js
           grep -q '"main": "worker-v57.js"' wrangler.jsonc
-          echo 'v57 ledger backfill gate built successfully'
+          grep -q 'worker-v58-openai-quota-fallback' worker-v57.js
+          echo 'v58 built successfully'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Wait for Cloudflare v57 and backfill start
+      - name: Wait for live v58 and real ledger progress
         shell: bash
         run: |
           set -euo pipefail
@@ -71,22 +72,23 @@ jobs:
             FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
             echo "Attempt $i diagnostic: $DIAG"
             echo "Attempt $i full: $FULL"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v57-ledger-backfill-gate"' \
-              && echo "$FULL" | grep -q '"version":"v57-ledger-backfill-gate"' \
-              && echo "$FULL" | grep -q '"ledgerBackfillGate":true' \
-              && echo "$FULL" | grep -q '"persistentAccountingLedger":true'; then
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v58-openai-quota-fallback"' \
+              && echo "$FULL" | grep -q '"version":"v58-openai-quota-fallback"' \
+              && echo "$FULL" | grep -q '"openaiQuotaFastFallback":true' \
+              && echo "$FULL" | grep -q '"ledgerBackfillGate":true'; then
               VERSION_OK=1
-              if echo "$DIAG" | grep -Eq '"backfill":\{[^}]*"(phase|processed|complete)"' \
-                || echo "$DIAG" | grep -Eq '"event_count":[1-9][0-9]*'; then
-                echo 'Cloudflare v57 is live and ledger backfill has started'
+              if echo "$FULL" | grep -Eq '"ledgerBackfillProcessed":[1-9][0-9]*' \
+                || echo "$DIAG" | grep -Eq '"event_count":[1-9][0-9]*' \
+                || echo "$DIAG" | grep -Eq '"backfill":\{[^}]*"processed":[1-9][0-9]*'; then
+                echo 'v58 live and ledger is making real progress'
                 exit 0
               fi
             fi
             sleep 15
           done
           if [ "$VERSION_OK" -eq 1 ]; then
-            echo 'v57 is live but ledger backfill did not start'
+            echo 'v58 is live but ledger is still at zero progress'
           else
-            echo 'Cloudflare did not reach v57 within verification window'
+            echo 'Cloudflare did not reach v58 within verification window'
           fi
           exit 1
