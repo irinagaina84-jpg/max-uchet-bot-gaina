@@ -39,7 +39,7 @@ jobs:
           node patch-v14-text-release-logic.mjs
           node patch-v14-openai-brain.mjs
           node patch-v14-semantic-thread.mjs
-          node patch-v14-persistent-ledger.mjs
+          node patch-v14-persistent-ledger-v2.mjs
           node --check bot.js
           grep -q 'v56-persistent-ledger' bot.js
           grep -q 'persistentAccountingLedger: true' bot.js
