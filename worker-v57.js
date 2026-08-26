@@ -3,6 +3,7 @@ import baseWorker, { MaxBotContainer } from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const WORKER_VERSION = "worker-v59-resumable-ledger";
+const BOT_VERSION = "v59-resumable-ledger";
 const CURRENT_CHAT_ID = "-77828005225953";
 
 export { MaxBotContainer };
@@ -11,16 +12,23 @@ function containerHandle(runtimeEnv) {
   return getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 }
 
-async function ensureV59(runtimeEnv) {
-  const container = containerHandle(runtimeEnv);
-  await container.resetRuntimeOnce(WORKER_VERSION);
-  return container;
-}
-
 async function containerHealth(container) {
   const response = await container.fetch(new Request("http://container/health"));
   const text = await response.text();
   try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
+}
+
+async function ensureV59(runtimeEnv) {
+  const container = containerHandle(runtimeEnv);
+  try {
+    const health = await containerHealth(container);
+    if (health?.version !== BOT_VERSION) {
+      await container.resetRuntimeOnce(WORKER_VERSION);
+    }
+  } catch {
+    await container.resetRuntimeOnce(WORKER_VERSION);
+  }
+  return container;
 }
 
 export default {
