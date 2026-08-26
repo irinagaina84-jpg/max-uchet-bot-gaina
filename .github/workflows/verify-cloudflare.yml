@@ -1,4 +1,4 @@
-name: Verify MAX bot v58
+name: Diagnose MAX bot v59
 
 on:
   push:
@@ -15,80 +15,44 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - name: Install runtime dependencies
-        run: cp package-final.json package.json && npm install --omit=dev
-      - name: Build bot exactly like Docker
+      - name: Build current Docker image
+        run: docker build -t max-bot-current .
+      - name: Verify v59 source
         shell: bash
         run: |
           set -euo pipefail
-          cp bot-giga-v14.js bot.js
-          node patch-v14-fullchat.mjs
-          node patch-v14-silent.mjs
-          node patch-v14-webhook.mjs
-          node patch-v14-block-stale.mjs
-          node patch-v14-max-history.mjs
-          node patch-v14-freshscope.mjs
-          node patch-v14-dialog-routing.mjs
-          node patch-v14-private-owner.mjs
-          node patch-v14-accounting-accuracy.mjs
-          node patch-v14-release-series.mjs
-          node patch-v14-text-release-logic.mjs
-          node patch-v14-openai-brain.mjs
-          node patch-v14-semantic-thread.mjs
-          node patch-v56-ledger-compat.mjs
-          node patch-v14-persistent-ledger-v2.mjs
-          node patch-v56-ledger-safety.mjs
-          node patch-v57-ledger-backfill-gate.mjs
-          node patch-v58-openai-quota-fallback.mjs
-          node --check bot.js
-          node --check worker.js
-          node --check worker-v57.js
-          grep -q 'v58-openai-quota-fallback' bot.js
-          grep -q 'openaiQuotaFastFallback: true' bot.js
-          grep -q 'v57-ledger-parser' bot.js
-          grep -q 'ledgerBackfillGate: true' bot.js
-          grep -q '"main": "worker-v57.js"' wrangler.jsonc
-          grep -q 'worker-v58-openai-quota-fallback' worker-v57.js
-          echo 'v58 built successfully'
+          grep -q 'BOT_IMAGE_REVISION=v59-resumable-ledger' Dockerfile
+          grep -q 'node patch-v59-resumable-ledger.mjs' Dockerfile
+          grep -q 'worker-v59-resumable-ledger' worker-v57.js
+          echo 'v59 source is buildable'
 
-  verify-live:
+  diagnose-live:
     needs: build-check
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     steps:
-      - name: Wait for live v58 and real ledger progress
+      - name: Dump live diagnostics and detect stall
         shell: bash
         run: |
           set -euo pipefail
           FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
-          VERSION_OK=0
-          for i in $(seq 1 40); do
+          PREV=""
+          for i in 1 2 3 4; do
             DIAG="$(curl -fsS --max-time 30 "$DIAG_URL" || true)"
             FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
-            echo "Attempt $i diagnostic: $DIAG"
-            echo "Attempt $i full: $FULL"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v58-openai-quota-fallback"' \
-              && echo "$FULL" | grep -q '"version":"v58-openai-quota-fallback"' \
-              && echo "$FULL" | grep -q '"openaiQuotaFastFallback":true' \
-              && echo "$FULL" | grep -q '"ledgerBackfillGate":true'; then
-              VERSION_OK=1
-              if echo "$FULL" | grep -Eq '"ledgerBackfillProcessed":[1-9][0-9]*' \
-                || echo "$DIAG" | grep -Eq '"event_count":[1-9][0-9]*' \
-                || echo "$DIAG" | grep -Eq '"backfill":\{[^}]*"processed":[1-9][0-9]*'; then
-                echo 'v58 live and ledger is making real progress'
-                exit 0
-              fi
+            echo "===== ATTEMPT $i DIAGNOSTIC ====="
+            echo "$DIAG"
+            echo "===== ATTEMPT $i FULL ====="
+            echo "$FULL"
+            CUR="$(printf '%s' "$FULL" | sed -n 's/.*"ledgerBackfillProcessed":\([0-9][0-9]*\).*/\1/p' | head -1)"
+            echo "PROCESSED=${CUR:-unknown}"
+            if [ -n "$PREV" ] && [ -n "$CUR" ] && [ "$CUR" -gt "$PREV" ]; then
+              echo "PROGRESS_ADVANCED=$PREV->$CUR"
+              exit 0
             fi
-            sleep 15
+            PREV="$CUR"
+            sleep 20
           done
-          if [ "$VERSION_OK" -eq 1 ]; then
-            echo 'v58 is live but ledger is still at zero progress'
-          else
-            echo 'Cloudflare did not reach v58 within verification window'
-          fi
+          echo 'NO_PROGRESS_DETECTED'
           exit 1
