@@ -22,9 +22,9 @@ const GIGA_MIN_GAP_MS = Number(process.env.GIGA_MIN_GAP_MS || 1200);
 async function gigaRaw(payload) {
   const run = async () => {
     let token = await getGigaToken(false);
-    const call = (t) => requestJson(\`${GIGA_API}/v1/chat/completions\`, {
+    const call = (t) => requestJson(\`\${GIGA_API}/v1/chat/completions\`, {
       method: "POST",
-      headers: { Authorization: \`Bearer ${t}\`, Accept: "application/json", "Content-Type": "application/json" },
+      headers: { Authorization: \`Bearer \${t}\`, Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ model: GIGA_MODEL, ...payload }),
       timeout: 120000
     });
@@ -70,7 +70,7 @@ const safeChunkNew = `async function extractChunkSafe(chatTitle, rows, depth = 0
   } catch (error) {
     const message = errText(error);
     const status = Number(error?.status || (String(message).match(/^(\\d{3}):/)?.[1] || 0));
-    console.error(\`extractChunkSafe depth=${depth} rows=${rows.length}: ${message}\`);
+    console.error(\`extractChunkSafe depth=\${depth} rows=\${rows.length}: \${message}\`);
 
     // A rate-limit must NEVER turn into missing accounting data.
     // gigaRaw already retries with backoff; if it still fails, fail the calculation explicitly.
@@ -108,13 +108,13 @@ const EXTRACTION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 function historyFingerprint(chatId, history) {
   let h = 2166136261;
   for (const m of history) {
-    const s = \`${msgId(m)}|${msgTime(m)}|${msgText(m).length}|${msgText(m).slice(0, 80)}|${attachments(m).length}\`;
+    const s = \`\${msgId(m)}|\${msgTime(m)}|\${msgText(m).length}|\${msgText(m).slice(0, 80)}|\${attachments(m).length}\`;
     for (let i = 0; i < s.length; i++) {
       h ^= s.charCodeAt(i);
       h = Math.imul(h, 16777619);
     }
   }
-  return \`${chatId}:${history.length}:${h >>> 0}\`;
+  return \`\${chatId}:\${history.length}:\${h >>> 0}\`;
 }
 
 async function extractChat(chatId, title, start, end) {
