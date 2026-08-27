@@ -1,4 +1,4 @@
-name: Diagnose MAX bot v59
+name: Verify MAX bot v60
 
 on:
   push:
@@ -17,42 +17,55 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify v59 source
+      - name: Verify v60 source
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'BOT_IMAGE_REVISION=v59-resumable-ledger' Dockerfile
-          grep -q 'node patch-v59-resumable-ledger.mjs' Dockerfile
-          grep -q 'worker-v59-resumable-ledger' worker-v57.js
-          echo 'v59 source is buildable'
+          grep -q 'BOT_IMAGE_REVISION=v60-monotonic-backfill' Dockerfile
+          grep -q 'node patch-v60-monotonic-backfill.mjs' Dockerfile
+          grep -q 'worker-v60-monotonic-backfill' worker-v57.js
+          echo 'v60 source is buildable'
 
-  diagnose-live:
+  verify-live:
     needs: build-check
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
-      - name: Dump live diagnostics and detect stall
+      - name: Verify live v60 and progress above checkpoint
         shell: bash
         run: |
           set -euo pipefail
           FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
-          PREV=""
-          for i in 1 2 3 4; do
+          PREV=0
+          VERSION_OK=0
+          for i in $(seq 1 12); do
             DIAG="$(curl -fsS --max-time 30 "$DIAG_URL" || true)"
             FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
             echo "===== ATTEMPT $i DIAGNOSTIC ====="
             echo "$DIAG"
             echo "===== ATTEMPT $i FULL ====="
             echo "$FULL"
-            CUR="$(printf '%s' "$FULL" | sed -n 's/.*"ledgerBackfillProcessed":\([0-9][0-9]*\).*/\1/p' | head -1)"
-            echo "PROCESSED=${CUR:-unknown}"
-            if [ -n "$PREV" ] && [ -n "$CUR" ] && [ "$CUR" -gt "$PREV" ]; then
-              echo "PROGRESS_ADVANCED=$PREV->$CUR"
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v60-monotonic-backfill"' && echo "$FULL" | grep -q '"version":"v60-monotonic-backfill"'; then
+              VERSION_OK=1
+            fi
+            CUR="$(printf '%s' "$DIAG" | grep -o '"processed":[0-9][0-9]*' | tail -1 | cut -d: -f2 || true)"
+            COMPLETE="$(printf '%s' "$DIAG" | grep -o '"complete":true' | tail -1 || true)"
+            echo "PERSISTED_PROCESSED=${CUR:-unknown}"
+            if [ -n "$COMPLETE" ]; then
+              echo 'BACKFILL_COMPLETE'
               exit 0
             fi
-            PREV="$CUR"
+            if [ "$VERSION_OK" -eq 1 ] && [ -n "$CUR" ] && [ "$CUR" -gt 278 ] && [ "$CUR" -ge "$PREV" ]; then
+              echo "V60_PROGRESS_OK=$CUR"
+              exit 0
+            fi
+            if [ -n "$CUR" ] && [ "$CUR" -lt "$PREV" ]; then
+              echo "PROGRESS_REGRESSED=$PREV->$CUR"
+              exit 1
+            fi
+            if [ -n "$CUR" ]; then PREV="$CUR"; fi
             sleep 20
           done
-          echo 'NO_PROGRESS_DETECTED'
+          echo "VERSION_OK=$VERSION_OK LAST_PROCESSED=$PREV"
           exit 1
