@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "max-uchet-bot-gaina-v64",
+  "main": "worker-v64.js",
+  "compatibility_date": "2026-08-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "containers": [
+    {
+      "class_name": "MaxBotContainer",
+      "image": "./Dockerfile",
+      "instance_type": "lite",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MAX_BOT_CONTAINER",
+        "class_name": "MaxBotContainer"
+      }
+    ]
+  }
+}
