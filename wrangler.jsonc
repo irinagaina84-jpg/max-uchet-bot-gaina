@@ -1,37 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "max-uchet-bot-gaina",
-  "main": "worker-v57.js",
+  "main": "worker-v64.js",
   "compatibility_date": "2026-08-23",
   "compatibility_flags": ["nodejs_compat"],
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
-  "containers": [
-    {
-      "class_name": "MaxBotContainer",
-      "image": "./Dockerfile",
-      "instance_type": "lite",
-      "max_instances": 2,
-      "rollout_step_percentage": [100],
-      "rollout_active_grace_period": 0
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "MAX_BOT_CONTAINER",
-        "class_name": "MaxBotContainer"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "v1",
-      "new_sqlite_classes": ["MaxBotContainer"]
-    }
-  ],
-  "observability": {
-    "enabled": true
-  }
+  "triggers": {"crons": ["*/5 * * * *"]},
+  "containers": [{"class_name": "MaxBotContainer", "image": "./Dockerfile", "instance_type": "lite", "max_instances": 2}],
+  "durable_objects": {"bindings": [{"name": "MAX_BOT_CONTAINER", "class_name": "MaxBotContainer"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["MaxBotContainer"]}],
+  "observability": {"enabled": true}
 }
