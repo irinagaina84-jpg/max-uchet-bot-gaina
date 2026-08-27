@@ -72,12 +72,14 @@ function buildHistoryExportText(chatId, chatTitle, rows, mode, checkpointMs = 0)
 }
 async function getHistoryExportCheckpoint(chatId) {
   try {
-    const data = await ledgerRequest("/export-state?chat_id=" + encodeURIComponent(chatId), { timeout: 20000 });
+    const data = await ledgerRequest("/state?chat_id=" + encodeURIComponent(chatId), { timeout: 20000 });
     return { ms: Number(data?.state?.export_checkpoint_ms || 0), mid: String(data?.state?.export_checkpoint_mid || "") };
   } catch { return { ms: 0, mid: "" }; }
 }
 async function saveHistoryExportCheckpoint(chatId, ms, mid) {
-  return ledgerRequest("/export-state", { method: "POST", body: { chat_id: String(chatId), export_checkpoint_ms: Number(ms || 0), export_checkpoint_mid: String(mid || "") }, timeout: 30000 });
+  let current = null;
+  try { current = await ledgerRequest("/state?chat_id=" + encodeURIComponent(chatId), { timeout: 20000 }); } catch {}
+  return ledgerRequest("/state", { method: "POST", body: { chat_id: String(chatId), state: { ...(current?.state || {}), export_checkpoint_ms: Number(ms || 0), export_checkpoint_mid: String(mid || "") } }, timeout: 30000 });
 }
 async function uploadTextFileToMax(filename, text) {
   const slot = await maxRequest("/uploads?type=file", { method: "POST", timeout: 30000 });
@@ -153,7 +155,6 @@ const privateReplacement = privateLine + String.raw`
   }`;
 replaceOnce(privateLine, privateReplacement, 'private export commands');
 
-// v61 briefly emitted a version property without its comma. This replacement also repairs that generated text.
 code = code.replace(/version:\s*"v[^"]+"\s*,?/, 'version: "v62-history-export",');
 if (code.includes('calendarDateWindows: true,') && !code.includes('historyExportFiles: true,')) {
   code = code.replace('calendarDateWindows: true,', 'calendarDateWindows: true,\n  historyExportFiles: true,\n  incrementalHistoryExport: true,');
