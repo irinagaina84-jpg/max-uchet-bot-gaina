@@ -1,4 +1,4 @@
-name: Verify MAX bot v60
+name: Verify MAX bot v63
 
 on:
   push:
@@ -17,55 +17,38 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify v60 source
+      - name: Verify v63 source
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'BOT_IMAGE_REVISION=v60-monotonic-backfill' Dockerfile
-          grep -q 'node patch-v60-monotonic-backfill.mjs' Dockerfile
-          grep -q 'worker-v60-monotonic-backfill' worker-v57.js
-          echo 'v60 source is buildable'
+          grep -q 'BOT_IMAGE_REVISION=v63-safe-ledger-export' Dockerfile
+          grep -q 'node patch-v63-safe-ledger-export-link.mjs' Dockerfile
+          grep -q 'worker-v63-safe-ledger-export' worker-v57.js
+          grep -q '/export/history' worker-v57.js
+          echo 'v63 source is buildable'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
-      - name: Verify live v60 and progress above checkpoint
+      - name: Wait for Cloudflare Git integration and verify live v63
         shell: bash
         run: |
           set -euo pipefail
           FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
-          PREV=0
-          VERSION_OK=0
-          for i in $(seq 1 12); do
+          for i in $(seq 1 30); do
             DIAG="$(curl -fsS --max-time 30 "$DIAG_URL" || true)"
             FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
-            echo "===== ATTEMPT $i DIAGNOSTIC ====="
+            echo "===== ATTEMPT $i ====="
             echo "$DIAG"
-            echo "===== ATTEMPT $i FULL ====="
             echo "$FULL"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v60-monotonic-backfill"' && echo "$FULL" | grep -q '"version":"v60-monotonic-backfill"'; then
-              VERSION_OK=1
-            fi
-            CUR="$(printf '%s' "$DIAG" | grep -o '"processed":[0-9][0-9]*' | tail -1 | cut -d: -f2 || true)"
-            COMPLETE="$(printf '%s' "$DIAG" | grep -o '"complete":true' | tail -1 || true)"
-            echo "PERSISTED_PROCESSED=${CUR:-unknown}"
-            if [ -n "$COMPLETE" ]; then
-              echo 'BACKFILL_COMPLETE'
+            if echo "$DIAG" | grep -q '"workerVersion":"worker-v63-safe-ledger-export"' && echo "$FULL" | grep -q '"version":"v63-safe-ledger-export"'; then
+              echo 'LIVE_V63_OK'
               exit 0
             fi
-            if [ "$VERSION_OK" -eq 1 ] && [ -n "$CUR" ] && [ "$CUR" -gt 278 ] && [ "$CUR" -ge "$PREV" ]; then
-              echo "V60_PROGRESS_OK=$CUR"
-              exit 0
-            fi
-            if [ -n "$CUR" ] && [ "$CUR" -lt "$PREV" ]; then
-              echo "PROGRESS_REGRESSED=$PREV->$CUR"
-              exit 1
-            fi
-            if [ -n "$CUR" ]; then PREV="$CUR"; fi
             sleep 20
           done
-          echo "VERSION_OK=$VERSION_OK LAST_PROCESSED=$PREV"
+          echo 'LIVE_V63_NOT_READY'
           exit 1
