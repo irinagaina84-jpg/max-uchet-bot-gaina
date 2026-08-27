@@ -1,4 +1,4 @@
-name: Verify MAX bot v63
+name: Verify MAX bot v64
 
 on:
   push:
@@ -17,38 +17,40 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify v63 source
+      - name: Verify v64 source
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'BOT_IMAGE_REVISION=v63-safe-ledger-export' Dockerfile
-          grep -q 'node patch-v63-safe-ledger-export-link.mjs' Dockerfile
-          grep -q 'worker-v63-safe-ledger-export' worker-v57.js
-          grep -q '/export/history' worker-v57.js
-          echo 'v63 source is buildable'
+          grep -q 'BOT_IMAGE_REVISION=v64-media-export-20260827-1' Dockerfile
+          grep -q 'node patch-v64-media-export-command.mjs' Dockerfile
+          grep -q 'worker-v64-media-export' worker-v64.js
+          grep -q '/export/media' worker-v64.js
+          grep -q 'main.*worker-v64.js' wrangler.jsonc
+          echo 'v64 source is buildable'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Wait for Cloudflare Git integration and verify live v63
+      - name: Wait for Cloudflare Git integration and verify live v64
         shell: bash
         run: |
           set -euo pipefail
-          FULL_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic/full"
+          MEDIA_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/export/media"
           DIAG_URL="https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/diagnostic"
           for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/media_body.txt -w '%{http_code}' --max-time 30 "$MEDIA_URL" || true)"
+            BODY="$(cat /tmp/media_body.txt 2>/dev/null || true)"
             DIAG="$(curl -fsS --max-time 30 "$DIAG_URL" || true)"
-            FULL="$(curl -fsS --max-time 30 "$FULL_URL" || true)"
             echo "===== ATTEMPT $i ====="
+            echo "media status=$CODE body=$BODY"
             echo "$DIAG"
-            echo "$FULL"
-            if echo "$DIAG" | grep -q '"workerVersion":"worker-v63-safe-ledger-export"' && echo "$FULL" | grep -q '"version":"v63-safe-ledger-export"'; then
-              echo 'LIVE_V63_OK'
+            if [ "$CODE" = "403" ] && echo "$BODY" | grep -q 'Forbidden'; then
+              echo 'LIVE_V64_MEDIA_EXPORT_OK'
               exit 0
             fi
             sleep 20
           done
-          echo 'LIVE_V63_NOT_READY'
+          echo 'LIVE_V64_NOT_READY'
           exit 1
