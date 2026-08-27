@@ -2,8 +2,8 @@ import { getContainer } from "@cloudflare/containers";
 import baseWorker, { MaxBotContainer } from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
-const WORKER_VERSION = "worker-v59-resumable-ledger";
-const BOT_VERSION = "v59-resumable-ledger";
+const WORKER_VERSION = "worker-v60-monotonic-backfill";
+const BOT_VERSION = "v60-monotonic-backfill";
 const CURRENT_CHAT_ID = "-77828005225953";
 
 export { MaxBotContainer };
@@ -18,7 +18,7 @@ async function containerHealth(container) {
   try { return JSON.parse(text); } catch { return { ok: false, raw: text }; }
 }
 
-async function ensureV59(runtimeEnv) {
+async function ensureV60(runtimeEnv) {
   const container = containerHandle(runtimeEnv);
   try {
     const health = await containerHealth(container);
@@ -34,7 +34,7 @@ async function ensureV59(runtimeEnv) {
 export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
-    const container = await ensureV59(runtimeEnv);
+    const container = await ensureV60(runtimeEnv);
 
     if (url.pathname === "/diagnostic") {
       const [knownChats, recentUpdates, runtime, ledger] = await Promise.all([
@@ -43,7 +43,7 @@ export default {
         container.getRuntimeState(),
         container.ledgerSummary({ chat_id: CURRENT_CHAT_ID }),
       ]);
-      ctx.waitUntil(containerHealth(container).catch((error) => console.error("v59 health start error", error)));
+      ctx.waitUntil(containerHealth(container).catch((error) => console.error("v60 health start error", error)));
       return Response.json({
         ok: true,
         workerVersion: WORKER_VERSION,
@@ -70,8 +70,8 @@ export default {
 
   async scheduled(_controller, runtimeEnv, ctx) {
     ctx.waitUntil((async () => {
-      const container = await ensureV59(runtimeEnv);
+      const container = await ensureV60(runtimeEnv);
       await containerHealth(container);
-    })().catch((error) => console.error("v59 keepalive error", error)));
+    })().catch((error) => console.error("v60 keepalive error", error)));
   },
 };
