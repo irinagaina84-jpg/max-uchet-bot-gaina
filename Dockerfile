@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v60-monotonic-backfill-20260827-1
+ENV BOT_IMAGE_REVISION=v61-date-dedup-20260827-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -26,6 +26,7 @@ COPY patch-v57-ledger-backfill-gate.mjs ./patch-v57-ledger-backfill-gate.mjs
 COPY patch-v58-openai-quota-fallback.mjs ./patch-v58-openai-quota-fallback.mjs
 COPY patch-v59-resumable-ledger.mjs ./patch-v59-resumable-ledger.mjs
 COPY patch-v60-monotonic-backfill.mjs ./patch-v60-monotonic-backfill.mjs
+COPY patch-v61-date-dedup.mjs ./patch-v61-date-dedup.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -46,6 +47,7 @@ RUN node patch-v57-ledger-backfill-gate.mjs
 RUN node patch-v58-openai-quota-fallback.mjs
 RUN node patch-v59-resumable-ledger.mjs
 RUN node patch-v60-monotonic-backfill.mjs
+RUN node patch-v61-date-dedup.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
