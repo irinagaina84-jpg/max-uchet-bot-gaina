@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v65-media-container-export-20260828-2
+ENV BOT_IMAGE_REVISION=v68-streaming-media-export-20260828-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -32,6 +32,7 @@ COPY patch-v63-safe-ledger-export-link.mjs ./patch-v63-safe-ledger-export-link.m
 COPY patch-v64-media-export-command.mjs ./patch-v64-media-export-command.mjs
 COPY patch-v65-media-container-export.mjs ./patch-v65-media-container-export.mjs
 COPY patch-v65-server-anchor-fix.mjs ./patch-v65-server-anchor-fix.mjs
+COPY patch-v68-streaming-media-export.mjs ./patch-v68-streaming-media-export.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -58,6 +59,7 @@ RUN node patch-v63-safe-ledger-export-link.mjs
 RUN node patch-v64-media-export-command.mjs
 RUN node patch-v65-server-anchor-fix.mjs
 RUN node patch-v65-media-container-export.mjs
+RUN node patch-v68-streaming-media-export.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
