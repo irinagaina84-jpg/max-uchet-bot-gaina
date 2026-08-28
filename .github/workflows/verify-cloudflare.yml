@@ -25,15 +25,16 @@ jobs:
           node --check worker-v71.js
           node --check worker-v72.js
           node --check patch-v72-multichat-export-command.mjs
-          grep -q 'BOT_IMAGE_REVISION=v72-multichat-export-20260828-1' Dockerfile
+          grep -q 'BOT_IMAGE_REVISION=v72-multichat-export-20260828-2' Dockerfile
           grep -q 'node patch-v72-multichat-export-command.mjs' Dockerfile
+          grep -q 'commandSmokePattern' patch-v72-multichat-export-command.mjs
           grep -q 'multiChatExportMatch' patch-v72-multichat-export-command.mjs
           grep -q 'chat_id=' patch-v72-multichat-export-command.mjs
           grep -q 'worker-v72-multichat-durable-export' worker-v72.js
           grep -q 'rawRangePage(chatId' worker-v72.js
           grep -q 'X-MAX-Chat-Id' worker-v72.js
           grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v72\.js"' wrangler.jsonc
-          echo 'v72 multi-chat export source is buildable'
+          echo 'v72 multi-chat ZIP export source is buildable'
 
   verify-live:
     needs: build-check
@@ -67,7 +68,7 @@ jobs:
               && grep -q '"webhook":"ready"' /tmp/webhook.txt \
               && [ "$MEDIA_CODE" = "403" ] \
               && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V72_MULTICHAT_EXPORT_OK'
+              echo 'LIVE_V72_MULTICHAT_ZIP_EXPORT_OK'
               exit 0
             fi
             sleep 15
