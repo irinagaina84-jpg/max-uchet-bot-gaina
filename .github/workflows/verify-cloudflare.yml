@@ -1,4 +1,4 @@
-name: Verify MAX bot v71
+name: Verify MAX bot v72
 
 on:
   push:
@@ -17,54 +17,60 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify reliable webhook and durable export sources
+      - name: Verify multi-chat command and durable export sources
         shell: bash
         run: |
           set -euo pipefail
           node --check worker-v70.js
           node --check worker-v71.js
-          grep -q 'BOT_IMAGE_REVISION=v71-reliable-webhook-20260828-1' Dockerfile
-          grep -q 'node patch-v71-reliable-webhook.mjs' Dockerfile
-          grep -q 'worker-v71-reliable-webhook-runtime' worker-v71.js
-          grep -q '/bot/health' worker-v71.js
-          grep -q 'worker-v70-durable-storage-export' worker-v70.js
-          grep -q 'durable-storage' worker-v70.js
-          grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v71\.js"' wrangler.jsonc
-          echo 'v71 source is buildable'
+          node --check worker-v72.js
+          node --check patch-v72-multichat-export-command.mjs
+          grep -q 'BOT_IMAGE_REVISION=v72-multichat-export-20260828-1' Dockerfile
+          grep -q 'node patch-v72-multichat-export-command.mjs' Dockerfile
+          grep -q 'multiChatExportMatch' patch-v72-multichat-export-command.mjs
+          grep -q 'chat_id=' patch-v72-multichat-export-command.mjs
+          grep -q 'worker-v72-multichat-durable-export' worker-v72.js
+          grep -q 'rawRangePage(chatId' worker-v72.js
+          grep -q 'X-MAX-Chat-Id' worker-v72.js
+          grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v72\.js"' wrangler.jsonc
+          echo 'v72 multi-chat export source is buildable'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Wait for Cloudflare and verify bot runtime, webhook and export
+      - name: Wait for Cloudflare and verify bot runtime and selected-chat export
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          CHAT='-76058846422497'
           for i in $(seq 1 36); do
             BOT_CODE="$(curl -sS -o /tmp/bot.txt -w '%{http_code}' --connect-timeout 10 --max-time 45 "$BASE/bot/health" || true)"
-            EXPORT_CODE="$(curl -sS -o /tmp/export.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/health" || true)"
+            EXPORT_CODE="$(curl -sS -o /tmp/export.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/health?chat_id=$CHAT" || true)"
             WEBHOOK_CODE="$(curl -sS -o /tmp/webhook.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/max-webhook" || true)"
-            MEDIA_CODE="$(curl -sS -o /tmp/media.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/media?mode=all" || true)"
+            MEDIA_CODE="$(curl -sS -o /tmp/media.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/media?mode=all&chat_id=$CHAT" || true)"
             echo "===== ATTEMPT $i ====="
-            echo "bot=$BOT_CODE body=$(head -c 1600 /tmp/bot.txt 2>/dev/null || true)"
-            echo "export=$EXPORT_CODE body=$(head -c 800 /tmp/export.txt 2>/dev/null || true)"
+            echo "bot=$BOT_CODE body=$(head -c 1800 /tmp/bot.txt 2>/dev/null || true)"
+            echo "export=$EXPORT_CODE body=$(head -c 1000 /tmp/export.txt 2>/dev/null || true)"
             echo "webhook=$WEBHOOK_CODE body=$(head -c 800 /tmp/webhook.txt 2>/dev/null || true)"
             echo "media=$MEDIA_CODE body=$(head -c 300 /tmp/media.txt 2>/dev/null || true)"
             if [ "$BOT_CODE" = "200" ] \
-              && grep -q '"version":"v71-reliable-webhook"' /tmp/bot.txt \
+              && grep -q '"version":"v72-multichat-export"' /tmp/bot.txt \
               && grep -q '"webhookConfigured":true' /tmp/bot.txt \
               && [ "$EXPORT_CODE" = "200" ] \
-              && grep -q '"source":"durable-storage"' /tmp/export.txt \
+              && grep -q '"version":"worker-v72-multichat-durable-export"' /tmp/export.txt \
+              && grep -q '"chatId":"-76058846422497"' /tmp/export.txt \
+              && grep -q '"readable":true' /tmp/export.txt \
               && [ "$WEBHOOK_CODE" = "200" ] \
               && grep -q '"webhook":"ready"' /tmp/webhook.txt \
               && [ "$MEDIA_CODE" = "403" ] \
               && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V71_BOT_AND_EXPORT_OK'
+              echo 'LIVE_V72_MULTICHAT_EXPORT_OK'
               exit 0
             fi
             sleep 15
           done
-          echo 'LIVE_V71_NOT_READY'
+          echo 'LIVE_V72_NOT_READY'
           exit 1
