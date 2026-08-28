@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "max-uchet-bot-gaina",
-  "main": "worker-v64.js",
+  "main": "worker-v67.js",
   "compatibility_date": "2026-08-23",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {"crons": ["*/5 * * * *"]},
