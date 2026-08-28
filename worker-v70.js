@@ -472,9 +472,27 @@ async function exportFromDurableStorage(request, runtimeEnv) {
   });
 }
 
+async function durableExportHealth(runtimeEnv) {
+  const page = await containerHandle(runtimeEnv).rawRangePage(CURRENT_CHAT_ID, 0, 0, "", 1);
+  return Response.json({
+    ok: true,
+    version: WORKER_VERSION,
+    source: "durable-storage",
+    readable: Boolean(page?.ok),
+    sampleCount: Array.isArray(page?.records) ? page.records.length : 0,
+  }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === "/export/health") {
+      try {
+        return await durableExportHealth(runtimeEnv);
+      } catch (error) {
+        return Response.json({ ok: false, version: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 });
+      }
+    }
     if (url.pathname === "/export/media" || url.pathname === "/export/saved") {
       try {
         return await exportFromDurableStorage(request, runtimeEnv);
