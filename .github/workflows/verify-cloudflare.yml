@@ -23,8 +23,8 @@ jobs:
           set -euo pipefail
           grep -q 'BOT_IMAGE_REVISION=v68-streaming-media-export-20260828-1' Dockerfile
           grep -q 'node patch-v68-streaming-media-export.mjs' Dockerfile
-          grep -q 'worker-v68-streaming-container-proxy' worker-v67.js
-          grep -q 'main.*worker-v67.js' wrangler.jsonc
+          grep -q 'worker-v68-streaming-container-proxy-r2' worker-v67.js
+          grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v67\.js"' wrangler.jsonc
           grep -q '/export/media' worker-v67.js
           echo 'v68 source is buildable'
 
