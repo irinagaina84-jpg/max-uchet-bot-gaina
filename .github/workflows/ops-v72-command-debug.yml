@@ -19,31 +19,42 @@ jobs:
         run: |
           set -u
           BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for ROUND in 1 2; do
-            echo "===== ROUND $ROUND ====="
 
-            DIAG_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/diag.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/diagnostic" || true)"
-            echo "diagnostic_status=$DIAG_CODE"
-            if jq -e . /tmp/diag.json >/dev/null 2>&1; then
-              echo -n 'knownChats='; jq -c '.knownChats' /tmp/diag.json
-              echo -n 'runtime='; jq -c '.runtime' /tmp/diag.json
-              echo -n 'recentUpdates_tail='; jq -c '(.recentUpdates // [])[-15:]' /tmp/diag.json
-            else
-              echo -n 'diagnostic_body='; head -c 2000 /tmp/diag.json || true; echo
-            fi
+          DIAG_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/diag.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/diagnostic" || true)"
+          BOT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/bot.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bot/health" || true)"
+          EXPORT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/export.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/export/health?chat_id=-76058846422497" || true)"
 
-            BOT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/bot.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bot/health" || true)"
-            echo "bot_status=$BOT_CODE"
-            if jq -e . /tmp/bot.json >/dev/null 2>&1; then
-              echo -n 'bot_runtime='; jq -c '.runtime' /tmp/bot.json
-              echo -n 'bot_summary='; jq -c '{startedAt:.container.startedAt,version:.container.version,maxAuthorized:.container.maxAuthorized,webhookConfigured:.container.webhookConfigured,knownGroupCount:.container.knownGroupCount,lastGroupChatId:.container.lastGroupChatId,lastGroupName:.container.lastGroupName,lastUpdateType:.container.lastUpdateType,lastUpdateAt:.container.lastUpdateAt,lastPrivateSenderId:.container.lastPrivateSenderId,lastPrivateText:.container.lastPrivateText,lastPrivateAt:.container.lastPrivateAt,lastSendAt:.container.lastSendAt,lastSendError:.container.lastSendError,lastError:.container.lastError,lastAiError:.container.lastAiError}' /tmp/bot.json
-            else
-              echo -n 'bot_body='; head -c 2000 /tmp/bot.json || true; echo
-            fi
+          echo "diagnostic_status=$DIAG_CODE"
+          echo "bot_status=$BOT_CODE"
+          echo "export_status=$EXPORT_CODE"
 
-            EXPORT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/export.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/export/health?chat_id=-76058846422497" || true)"
-            echo "export_status=$EXPORT_CODE"
-            echo -n 'export='; cat /tmp/export.json || true; echo
+          COMMAND="$(jq -r '.container.lastPrivateText // ""' /tmp/bot.json 2>/dev/null || true)"
+          RECEIVED_AT="$(jq -r '.container.lastPrivateAt // ""' /tmp/bot.json 2>/dev/null || true)"
+          SENT_AT="$(jq -r '.container.lastSendAt // ""' /tmp/bot.json 2>/dev/null || true)"
+          SEND_ERROR="$(jq -r '.container.lastSendError // "none"' /tmp/bot.json 2>/dev/null || true)"
+          VERSION="$(jq -r '.container.version // "unknown"' /tmp/bot.json 2>/dev/null || true)"
+          AUTH="$(jq -r '.container.maxAuthorized // false' /tmp/bot.json 2>/dev/null || true)"
+          WEBHOOK="$(jq -r '.container.webhookConfigured // false' /tmp/bot.json 2>/dev/null || true)"
+          CHATS="$(jq -r '.knownChatCount // 0' /tmp/diag.json 2>/dev/null || true)"
+          EXPORT_VERSION="$(jq -r '.version // "unknown"' /tmp/export.json 2>/dev/null || true)"
+          EXPORT_READABLE="$(jq -r '.readable // false' /tmp/export.json 2>/dev/null || true)"
 
-            [ "$ROUND" = "1" ] && sleep 8
-          done
+          {
+            echo '## Live MAX bot command status'
+            echo
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Bot version | $VERSION |"
+            echo "| MAX authorized | $AUTH |"
+            echo "| Webhook configured | $WEBHOOK |"
+            echo "| Known chats | $CHATS |"
+            echo "| Last command | $COMMAND |"
+            echo "| Command received at | $RECEIVED_AT |"
+            echo "| Outgoing message sent at | $SENT_AT |"
+            echo "| Send error | $SEND_ERROR |"
+            echo "| Export version | $EXPORT_VERSION |"
+            echo "| Selected chat storage readable | $EXPORT_READABLE |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          cat "$GITHUB_STEP_SUMMARY"
+          exit 0
