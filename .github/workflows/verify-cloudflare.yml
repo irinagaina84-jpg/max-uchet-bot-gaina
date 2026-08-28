@@ -1,4 +1,4 @@
-name: Verify MAX bot v69
+name: Verify MAX bot v70
 
 on:
   push:
@@ -17,41 +17,46 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify current export source
+      - name: Verify durable export source
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'BOT_IMAGE_REVISION=v69-date-range-media-export-20260828-1' Dockerfile
-          grep -q 'node patch-v68-streaming-media-export.mjs' Dockerfile
-          grep -q 'node patch-v69-date-range-media-export.mjs' Dockerfile
-          grep -q 'worker-v68-streaming-container-proxy-r2' worker-v67.js
-          grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v67\.js"' wrangler.jsonc
-          grep -q '/export/media' worker-v67.js
-          echo 'v69 source is buildable'
+          node --check worker-v70.js
+          grep -q 'worker-v70-durable-storage-export' worker-v70.js
+          grep -q 'rawRangePage' worker-v70.js
+          grep -q 'durable-storage' worker-v70.js
+          grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v70\.js"' wrangler.jsonc
+          grep -q '/export/media' worker-v70.js
+          grep -q '/export/health' worker-v70.js
+          echo 'v70 durable export source is buildable'
 
   verify-live:
     needs: build-check
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Wait for Cloudflare deployment and verify public endpoints
+      - name: Wait for Cloudflare deployment and verify durable export
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
           for i in $(seq 1 36); do
-            ROOT_CODE="$(curl -sS -o /tmp/root.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/" || true)"
+            HEALTH_CODE="$(curl -sS -o /tmp/health.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/health" || true)"
             MEDIA_CODE="$(curl -sS -o /tmp/media.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/media?mode=all" || true)"
-            DIAG_CODE="$(curl -sS -o /tmp/diag.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/diagnostic" || true)"
+            ROOT_CODE="$(curl -sS -o /tmp/root.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/" || true)"
             echo "===== ATTEMPT $i ====="
-            echo "root=$ROOT_CODE body=$(head -c 500 /tmp/root.txt 2>/dev/null || true)"
+            echo "health=$HEALTH_CODE body=$(head -c 1000 /tmp/health.txt 2>/dev/null || true)"
             echo "media=$MEDIA_CODE body=$(head -c 500 /tmp/media.txt 2>/dev/null || true)"
-            echo "diag=$DIAG_CODE body=$(head -c 1000 /tmp/diag.txt 2>/dev/null || true)"
-            if [ "$MEDIA_CODE" = "403" ] && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V69_EXPORT_ENDPOINT_OK'
+            echo "root=$ROOT_CODE body=$(head -c 500 /tmp/root.txt 2>/dev/null || true)"
+            if [ "$HEALTH_CODE" = "200" ] \
+              && grep -q '"source":"durable-storage"' /tmp/health.txt \
+              && grep -q '"readable":true' /tmp/health.txt \
+              && [ "$MEDIA_CODE" = "403" ] \
+              && grep -q 'Forbidden' /tmp/media.txt; then
+              echo 'LIVE_V70_DURABLE_EXPORT_OK'
               exit 0
             fi
             sleep 15
           done
-          echo 'LIVE_V69_ENDPOINT_NOT_READY'
+          echo 'LIVE_V70_DURABLE_EXPORT_NOT_READY'
           exit 1
