@@ -1,4 +1,4 @@
-name: Verify MAX bot v68
+name: Verify MAX bot v69
 
 on:
   push:
@@ -21,12 +21,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'BOT_IMAGE_REVISION=v68-streaming-media-export-20260828-1' Dockerfile
+          grep -q 'BOT_IMAGE_REVISION=v69-date-range-media-export-20260828-1' Dockerfile
           grep -q 'node patch-v68-streaming-media-export.mjs' Dockerfile
+          grep -q 'node patch-v69-date-range-media-export.mjs' Dockerfile
           grep -q 'worker-v68-streaming-container-proxy-r2' worker-v67.js
           grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v67\.js"' wrangler.jsonc
           grep -q '/export/media' worker-v67.js
-          echo 'v68 source is buildable'
+          echo 'v69 source is buildable'
 
   verify-live:
     needs: build-check
@@ -47,10 +48,10 @@ jobs:
             echo "media=$MEDIA_CODE body=$(head -c 500 /tmp/media.txt 2>/dev/null || true)"
             echo "diag=$DIAG_CODE body=$(head -c 1000 /tmp/diag.txt 2>/dev/null || true)"
             if [ "$MEDIA_CODE" = "403" ] && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V68_EXPORT_ENDPOINT_OK'
+              echo 'LIVE_V69_EXPORT_ENDPOINT_OK'
               exit 0
             fi
             sleep 15
           done
-          echo 'LIVE_V68_ENDPOINT_NOT_READY'
+          echo 'LIVE_V69_ENDPOINT_NOT_READY'
           exit 1
