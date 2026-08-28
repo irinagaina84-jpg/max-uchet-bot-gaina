@@ -1,4 +1,4 @@
-name: Verify MAX bot v73
+name: Verify MAX bot v74
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify historical backfill and durable ZIP sources
+      - name: Verify private forwarded chat import and durable ZIP sources
         shell: bash
         run: |
           set -euo pipefail
@@ -25,18 +25,20 @@ jobs:
           node --check worker-v71.js
           node --check worker-v72.js
           node --check patch-v72-multichat-export-command.mjs
-          grep -q 'BOT_IMAGE_REVISION=v73-history-archive-export-20260828-1' Dockerfile
+          node --check patch-v74-private-forward-import.mjs
+          grep -q 'BOT_IMAGE_REVISION=v74-private-forward-import-20260829-1' Dockerfile
           grep -q 'node patch-v72-multichat-export-command.mjs' Dockerfile
-          grep -q 'commandSmokePattern' patch-v72-multichat-export-command.mjs
-          grep -q 'historyRows' patch-v72-multichat-export-command.mjs
-          grep -q 'ledgerRequest("/raw"' patch-v72-multichat-export-command.mjs
-          grep -q 'v73-history-archive-export' patch-v72-multichat-export-command.mjs
-          grep -q 'worker-v73-history-archive-runtime-r1' worker-v71.js
+          grep -q 'node patch-v74-private-forward-import.mjs' Dockerfile
+          grep -q 'handlePrivateImportCommand' patch-v74-private-forward-import.mjs
+          grep -q 'ingestPrivateForward' patch-v74-private-forward-import.mjs
+          grep -q 'Собрать ZIP' patch-v74-private-forward-import.mjs
+          grep -q 'v74-private-forward-import' patch-v74-private-forward-import.mjs
+          grep -q 'worker-v74-private-forward-import-runtime-r1' worker-v71.js
           grep -q 'worker-v72-multichat-durable-export' worker-v72.js
           grep -q 'rawRangePage(chatId' worker-v72.js
           grep -q 'X-MAX-Chat-Id' worker-v72.js
           grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v72\.js"' wrangler.jsonc
-          echo 'v73 historical backfill ZIP source is buildable'
+          echo 'v74 private forwarded chat ZIP import source is buildable'
 
   verify-live:
     needs: build-check
@@ -60,7 +62,8 @@ jobs:
             echo "webhook=$WEBHOOK_CODE body=$(head -c 800 /tmp/webhook.txt 2>/dev/null || true)"
             echo "media=$MEDIA_CODE body=$(head -c 300 /tmp/media.txt 2>/dev/null || true)"
             if [ "$BOT_CODE" = "200" ] \
-              && grep -q '"version":"v73-history-archive-export"' /tmp/bot.txt \
+              && grep -q '"version":"v74-private-forward-import"' /tmp/bot.txt \
+              && grep -q '"privateForwardImport":true' /tmp/bot.txt \
               && grep -q '"webhookConfigured":true' /tmp/bot.txt \
               && [ "$EXPORT_CODE" = "200" ] \
               && grep -q '"version":"worker-v72-multichat-durable-export"' /tmp/export.txt \
@@ -70,10 +73,10 @@ jobs:
               && grep -q '"webhook":"ready"' /tmp/webhook.txt \
               && [ "$MEDIA_CODE" = "403" ] \
               && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V73_HISTORY_BACKFILL_ZIP_READY'
+              echo 'LIVE_V74_PRIVATE_FORWARD_ZIP_READY'
               exit 0
             fi
             sleep 15
           done
-          echo 'LIVE_V73_NOT_READY'
+          echo 'LIVE_V74_NOT_READY'
           exit 1
