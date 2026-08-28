@@ -2,7 +2,7 @@ import { getContainer } from "@cloudflare/containers";
 import v64Worker, { MaxBotContainer } from "./worker-v64.js";
 
 const CONTAINER_INSTANCE = "production";
-const WORKER_VERSION = "worker-v67-container-media-proxy";
+const WORKER_VERSION = "worker-v68-streaming-container-proxy";
 const encoder = new TextEncoder();
 
 export { MaxBotContainer };
@@ -11,9 +11,35 @@ function containerHandle(runtimeEnv) {
   return getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(value || "")));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fetchContainerExport(container, internalUrl) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      if (attempt > 0) await sleep(1500 * attempt);
+      return await container.fetch(new Request(internalUrl.toString(), {
+        method: "GET",
+        headers: { "X-Internal-Media-Export": "1" }
+      }));
+    } catch (error) {
+      lastError = error;
+      try {
+        const health = await container.fetch(new Request("http://container/health", { method: "GET" }));
+        await health.arrayBuffer();
+      } catch {
+        // The next attempt will start a replacement instance automatically.
+      }
+    }
+  }
+  throw lastError || new Error("container export unavailable");
 }
 
 async function proxyMediaExport(request, runtimeEnv) {
@@ -26,23 +52,13 @@ async function proxyMediaExport(request, runtimeEnv) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const container = containerHandle(runtimeEnv);
-  try {
-    await container.resetRuntimeOnce(WORKER_VERSION);
-  } catch {
-    // A warm container may already be on the current image.
-  }
-
   const internalUrl = new URL("http://container/export/media");
   for (const [key, value] of sourceUrl.searchParams.entries()) {
     if (key !== "t") internalUrl.searchParams.append(key, value);
   }
 
-  const response = await container.fetch(new Request(internalUrl.toString(), {
-    method: "GET",
-    headers: { "X-Internal-Media-Export": "1" }
-  }));
-
+  const container = containerHandle(runtimeEnv);
+  const response = await fetchContainerExport(container, internalUrl);
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store, private");
   headers.set("X-MAX-Export-Route", WORKER_VERSION);
