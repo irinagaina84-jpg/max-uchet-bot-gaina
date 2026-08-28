@@ -8,8 +8,21 @@ if (!code.includes(privateLine)) {
   throw new Error("v72 private command anchor not found");
 }
 
+// JavaScript \b only understands ASCII word characters. It does not create a
+// boundary after the Cyrillic word "фото", so use a whitespace/end lookahead.
+const commandSmokePattern = /^экспорт\s+(?:с\s+фото|с\s+картинками|медиа|media)(?=\s|$)([\s\S]*)$/i;
+for (const sample of [
+  "Экспорт с фото сегодня -76058846422497",
+  "Экспорт с картинками 28.08 -76058846422497",
+  "Экспорт медиа -76058846422497",
+]) {
+  if (!commandSmokePattern.test(sample)) {
+    throw new Error(`v72 ZIP command smoke test failed: ${sample}`);
+  }
+}
+
 const command = String.raw`
-  const multiChatExportMatch = text.match(/^экспорт\s+(?:с\s+фото|с\s+картинками|медиа|media)\b([\s\S]*)$/i);
+  const multiChatExportMatch = text.match(/^экспорт\s+(?:с\s+фото|с\s+картинками|медиа|media)(?=\s|$)([\s\S]*)$/i);
   if (multiChatExportMatch) {
     try {
       let tail = normalizeText(multiChatExportMatch[1] || "");
@@ -92,10 +105,17 @@ const command = String.raw`
       );
     }
     return;
+  }
+  if (/^экспорт\b/i.test(text)) {
+    await sendText(
+      "user_id=" + encodeURIComponent(senderId),
+      "Команда экспорта не распознана. Пример:\nЭкспорт с фото сегодня -76058846422497"
+    );
+    return;
   }`;
 
 code = code.replace(privateLine, privateLine + command);
 code = code.replace(/version:\s*"v[^"]+"\s*,?/, 'version: "v72-multichat-export",');
 
 fs.writeFileSync(path, code);
-console.log("v72 multi-chat date export command enabled");
+console.log("v72 multi-chat ZIP export command enabled");
