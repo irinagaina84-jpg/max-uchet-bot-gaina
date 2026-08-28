@@ -1,0 +1,28 @@
+name: Ops live MAX bot probe
+
+on:
+  push:
+    branches:
+      - ops/live-bot-probe-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Probe public bot endpoints
+        shell: bash
+        run: |
+          set -u
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for path in '/' '/max-webhook' '/diagnostic' '/diagnostic/full' '/export/health'; do
+            echo "===== $path ====="
+            CODE="$(curl -sS -o /tmp/body.txt -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE$path" || true)"
+            echo "status=$CODE"
+            cat /tmp/body.txt 2>/dev/null || true
+            echo
+          done
