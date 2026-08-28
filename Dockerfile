@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v73-history-archive-export-20260828-1
+ENV BOT_IMAGE_REVISION=v74-private-forward-import-20260829-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -36,6 +36,7 @@ COPY patch-v68-streaming-media-export.mjs ./patch-v68-streaming-media-export.mjs
 COPY patch-v69-date-range-media-export.mjs ./patch-v69-date-range-media-export.mjs
 COPY patch-v71-reliable-webhook.mjs ./patch-v71-reliable-webhook.mjs
 COPY patch-v72-multichat-export-command.mjs ./patch-v72-multichat-export-command.mjs
+COPY patch-v74-private-forward-import.mjs ./patch-v74-private-forward-import.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -66,6 +67,7 @@ RUN node patch-v68-streaming-media-export.mjs
 RUN node patch-v69-date-range-media-export.mjs
 RUN node patch-v71-reliable-webhook.mjs
 RUN node patch-v72-multichat-export-command.mjs
+RUN node patch-v74-private-forward-import.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
