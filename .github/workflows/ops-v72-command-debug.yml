@@ -17,47 +17,33 @@ jobs:
       - name: Read live command diagnostics
         shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json, time, urllib.request
+          set -u
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for ROUND in 1 2; do
+            echo "===== ROUND $ROUND ====="
 
-          base = 'https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+            DIAG_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/diag.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/diagnostic" || true)"
+            echo "diagnostic_status=$DIAG_CODE"
+            if jq -e . /tmp/diag.json >/dev/null 2>&1; then
+              echo -n 'knownChats='; jq -c '.knownChats' /tmp/diag.json
+              echo -n 'runtime='; jq -c '.runtime' /tmp/diag.json
+              echo -n 'recentUpdates_tail='; jq -c '(.recentUpdates // [])[-15:]' /tmp/diag.json
+            else
+              echo -n 'diagnostic_body='; head -c 2000 /tmp/diag.json || true; echo
+            fi
 
-          def load(path):
-              req = urllib.request.Request(base + path, headers={'Accept': 'application/json'})
-              with urllib.request.urlopen(req, timeout=90) as response:
-                  raw = response.read().decode('utf-8', 'replace')
-                  try:
-                      return response.status, json.loads(raw)
-                  except Exception:
-                      return response.status, {'raw': raw}
+            BOT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/bot.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bot/health" || true)"
+            echo "bot_status=$BOT_CODE"
+            if jq -e . /tmp/bot.json >/dev/null 2>&1; then
+              echo -n 'bot_runtime='; jq -c '.runtime' /tmp/bot.json
+              echo -n 'bot_summary='; jq -c '{startedAt:.container.startedAt,version:.container.version,maxAuthorized:.container.maxAuthorized,webhookConfigured:.container.webhookConfigured,knownGroupCount:.container.knownGroupCount,lastGroupChatId:.container.lastGroupChatId,lastGroupName:.container.lastGroupName,lastUpdateType:.container.lastUpdateType,lastUpdateAt:.container.lastUpdateAt,lastPrivateSenderId:.container.lastPrivateSenderId,lastPrivateText:.container.lastPrivateText,lastPrivateAt:.container.lastPrivateAt,lastSendAt:.container.lastSendAt,lastSendError:.container.lastSendError,lastError:.container.lastError,lastAiError:.container.lastAiError}' /tmp/bot.json
+            else
+              echo -n 'bot_body='; head -c 2000 /tmp/bot.json || true; echo
+            fi
 
-          for round_no in range(1, 3):
-              print(f'===== ROUND {round_no} =====')
-              status, diag = load('/diagnostic')
-              print('diagnostic_status=', status)
-              print('knownChats=', json.dumps(diag.get('knownChats'), ensure_ascii=False))
-              print('runtime=', json.dumps(diag.get('runtime'), ensure_ascii=False))
-              recent = diag.get('recentUpdates') or []
-              print('recentUpdates_tail=', json.dumps(recent[-15:], ensure_ascii=False))
+            EXPORT_CODE="$(curl -sS -A 'curl/8.0' -o /tmp/export.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/export/health?chat_id=-76058846422497" || true)"
+            echo "export_status=$EXPORT_CODE"
+            echo -n 'export='; cat /tmp/export.json || true; echo
 
-              status, bot = load('/bot/health')
-              container = bot.get('container') or {}
-              keys = [
-                  'startedAt', 'version', 'maxAuthorized', 'webhookConfigured',
-                  'knownGroupCount', 'lastGroupChatId', 'lastGroupName',
-                  'lastUpdateType', 'lastUpdateAt', 'lastPrivateSenderId',
-                  'lastPrivateText', 'lastPrivateAt', 'lastSendAt',
-                  'lastSendError', 'lastError', 'lastAiError'
-              ]
-              summary = {key: container.get(key) for key in keys}
-              print('bot_status=', status)
-              print('bot_runtime=', bot.get('runtime'))
-              print('bot_summary=', json.dumps(summary, ensure_ascii=False))
-
-              status, export = load('/export/health?chat_id=-76058846422497')
-              print('export_status=', status)
-              print('export=', json.dumps(export, ensure_ascii=False))
-              if round_no == 1:
-                  time.sleep(8)
-          PY
+            [ "$ROUND" = "1" ] && sleep 8
+          done
