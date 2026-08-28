@@ -2,7 +2,7 @@ import { getContainer } from "@cloudflare/containers";
 import v64Worker, { MaxBotContainer } from "./worker-v64.js";
 
 const CONTAINER_INSTANCE = "production";
-const WORKER_VERSION = "worker-v68-streaming-container-proxy";
+const WORKER_VERSION = "worker-v68-streaming-container-proxy-r2";
 const encoder = new TextEncoder();
 
 export { MaxBotContainer };
@@ -20,23 +20,36 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+async function isTransientContainerResponse(response) {
+  if (!response || response.status < 500) return false;
+  try {
+    const text = await response.clone().text();
+    return /container\s+(?:suddenly\s+)?disconnected|container.*try again|container.*unavailable/i.test(text);
+  } catch {
+    return false;
+  }
+}
+
 async function fetchContainerExport(container, internalUrl) {
   let lastError = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      if (attempt > 0) await sleep(1500 * attempt);
-      return await container.fetch(new Request(internalUrl.toString(), {
+      if (attempt > 0) await sleep(1800 * attempt);
+      const response = await container.fetch(new Request(internalUrl.toString(), {
         method: "GET",
         headers: { "X-Internal-Media-Export": "1" }
       }));
+      if (!(await isTransientContainerResponse(response))) return response;
+      lastError = new Error("container temporarily disconnected");
     } catch (error) {
       lastError = error;
-      try {
-        const health = await container.fetch(new Request("http://container/health", { method: "GET" }));
-        await health.arrayBuffer();
-      } catch {
-        // The next attempt will start a replacement instance automatically.
-      }
+    }
+
+    try {
+      const health = await container.fetch(new Request("http://container/health", { method: "GET" }));
+      await health.arrayBuffer();
+    } catch {
+      // The next attempt starts or reconnects the same named container automatically.
     }
   }
   throw lastError || new Error("container export unavailable");
