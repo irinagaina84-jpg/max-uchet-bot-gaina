@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v72-multichat-export-20260828-1
+ENV BOT_IMAGE_REVISION=v72-multichat-export-20260828-2
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
