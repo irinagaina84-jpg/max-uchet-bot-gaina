@@ -4,8 +4,8 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v77-mailru-inventory-runtime-r1";
-const WORKER_VERSION = "worker-v77-mailru-inventory-routing";
+const RUNTIME_RESET_VERSION = "worker-v78-mailru-index-runtime-r1";
+const WORKER_VERSION = "worker-v78-mailru-index-routing";
 
 // Keep the Node bot warm. The cron runs every 5 minutes; a 30-minute sleep
 // window also protects private commands when one cron invocation is delayed.
