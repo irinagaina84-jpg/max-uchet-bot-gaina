@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v76-forward-source-chat-register-20260829-1
+ENV BOT_IMAGE_REVISION=v77-mailru-inventory-20260829-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -39,6 +39,7 @@ COPY patch-v72-multichat-export-command.mjs ./patch-v72-multichat-export-command
 COPY patch-v74-private-forward-import.mjs ./patch-v74-private-forward-import.mjs
 COPY patch-v75-private-import-screenshots.mjs ./patch-v75-private-import-screenshots.mjs
 COPY patch-v76-forward-source-chat-register.mjs ./patch-v76-forward-source-chat-register.mjs
+COPY patch-v77-mailru-inventory.mjs ./patch-v77-mailru-inventory.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -72,6 +73,7 @@ RUN node patch-v72-multichat-export-command.mjs
 RUN node patch-v74-private-forward-import.mjs
 RUN node patch-v75-private-import-screenshots.mjs
 RUN node patch-v76-forward-source-chat-register.mjs
+RUN node patch-v77-mailru-inventory.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
