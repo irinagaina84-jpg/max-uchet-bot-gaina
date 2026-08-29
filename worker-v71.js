@@ -21,13 +21,23 @@ function containerHandle(runtimeEnv) {
   return getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
 }
 
+function runtimeResetVersion(runtimeEnv) {
+  const mailReady = Boolean(
+    String(runtimeEnv?.MAILRU_LOGIN || "").trim()
+    && String(runtimeEnv?.MAILRU_APP_PASSWORD || "").trim()
+  );
+  return `${RUNTIME_RESET_VERSION}-${mailReady ? "mail-ready" : "mail-missing"}`;
+}
+
 async function ensureBotRuntime(runtimeEnv) {
   const container = containerHandle(runtimeEnv);
+  const resetVersion = runtimeResetVersion(runtimeEnv);
 
-  // Reset only once for this release. Unlike the old wrapper chain, no other
-  // request changes this marker, so the process is not destroyed repeatedly.
+  // Reset once when the release changes, and once more automatically when
+  // Mail.ru credentials become complete. This lets a newly added secret reach
+  // the already-running named container without manual intervention.
   try {
-    await container.resetRuntimeOnce(RUNTIME_RESET_VERSION);
+    await container.resetRuntimeOnce(resetVersion);
   } catch {
     // A replacement process can still be started by the health request.
   }
@@ -41,7 +51,7 @@ async function ensureBotRuntime(runtimeEnv) {
       if (!response.ok) throw new Error(`container health ${response.status}: ${text.slice(0, 300)}`);
       let data = null;
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
-      return { ok: true, status: response.status, data };
+      return { ok: true, status: response.status, data, resetVersion };
     } catch (error) {
       lastError = error;
     }
@@ -90,11 +100,11 @@ export default {
     if (url.pathname === "/bot/health") {
       try {
         const result = await ensureBotRuntime(runtimeEnv);
-        return Response.json({ ok: true, runtime: RUNTIME_RESET_VERSION, container: result.data }, {
+        return Response.json({ ok: true, runtime: result.resetVersion, container: result.data }, {
           headers: { "Cache-Control": "no-store" },
         });
       } catch (error) {
-        return Response.json({ ok: false, runtime: RUNTIME_RESET_VERSION, error: String(error?.message || error) }, {
+        return Response.json({ ok: false, runtime: runtimeResetVersion(runtimeEnv), error: String(error?.message || error) }, {
           status: 503,
           headers: { "Cache-Control": "no-store" },
         });
