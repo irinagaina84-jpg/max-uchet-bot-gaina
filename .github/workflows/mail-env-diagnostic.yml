@@ -1,0 +1,27 @@
+name: Mail.ru env diagnostic
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check Mail.ru bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 12); do
+            CODE="$(curl -sS -o /tmp/keys.txt -w '%{http_code}' --connect-timeout 10 --max-time 20 "$BASE/mail/env-keys" || true)"
+            CHECK="$(curl -sS -o /tmp/check.txt -w '%{http_code}' --connect-timeout 10 --max-time 20 "$BASE/mail/env-check" || true)"
+            echo "attempt=$i keys_code=$CODE keys=$(cat /tmp/keys.txt 2>/dev/null || true) check_code=$CHECK check=$(cat /tmp/check.txt 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && [ "$CHECK" = "200" ]; then exit 0; fi
+            sleep 5
+          done
+          exit 1
