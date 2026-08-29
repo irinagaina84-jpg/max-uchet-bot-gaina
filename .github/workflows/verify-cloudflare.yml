@@ -51,11 +51,13 @@ jobs:
           CHAT='-76058846422497'
           for i in $(seq 1 36); do
             BOT_CODE="$(curl -sS -o /tmp/bot.txt -w '%{http_code}' --connect-timeout 10 --max-time 45 "$BASE/bot/health" || true)"
+            MAIL_CODE="$(curl -sS -o /tmp/mail.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/mail/env-check" || true)"
             EXPORT_CODE="$(curl -sS -o /tmp/export.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/health?chat_id=$CHAT" || true)"
             WEBHOOK_CODE="$(curl -sS -o /tmp/webhook.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/max-webhook" || true)"
             MEDIA_CODE="$(curl -sS -o /tmp/media.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/media?mode=all&chat_id=$CHAT" || true)"
             echo "===== ATTEMPT $i ====="
             echo "bot=$BOT_CODE body=$(head -c 1800 /tmp/bot.txt 2>/dev/null || true)"
+            echo "mail=$MAIL_CODE body=$(head -c 500 /tmp/mail.txt 2>/dev/null || true)"
             echo "export=$EXPORT_CODE body=$(head -c 1000 /tmp/export.txt 2>/dev/null || true)"
             echo "webhook=$WEBHOOK_CODE body=$(head -c 800 /tmp/webhook.txt 2>/dev/null || true)"
             echo "media=$MEDIA_CODE body=$(head -c 300 /tmp/media.txt 2>/dev/null || true)"
@@ -66,6 +68,7 @@ jobs:
               && grep -q '"forwardSourceChatRegister":true' /tmp/bot.txt \
               && grep -q '"mailruInventory":true' /tmp/bot.txt \
               && grep -q '"webhookConfigured":true' /tmp/bot.txt \
+              && [ "$MAIL_CODE" = "200" ] \
               && [ "$EXPORT_CODE" = "200" ] \
               && grep -q '"version":"worker-v72-multichat-durable-export"' /tmp/export.txt \
               && grep -q '"readable":true' /tmp/export.txt \
