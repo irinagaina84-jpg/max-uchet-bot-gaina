@@ -14,6 +14,16 @@ function hasValue(value) {
   return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
 }
 
+function mailBindingNames(source) {
+  try {
+    return Object.keys(source || {})
+      .filter((key) => /mail/i.test(String(key)))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
 export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
@@ -28,6 +38,13 @@ export default {
           login: hasValue(env.MAILRU_LOGIN),
           password: hasValue(env.MAILRU_APP_PASSWORD),
         },
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (url.pathname === "/mail/env-keys") {
+      return Response.json({
+        ok: true,
+        runtimeNames: mailBindingNames(runtimeEnv),
+        globalNames: mailBindingNames(env),
       }, { headers: { "Cache-Control": "no-store" } });
     }
     return currentWorker.fetch(request, runtimeEnv, ctx);
