@@ -1,4 +1,4 @@
-name: Verify MAX bot v77 Mail.ru
+name: Verify MAX bot v78 Mail.ru index
 
 on:
   push:
@@ -11,13 +11,13 @@ permissions:
 jobs:
   build-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Build current Docker image
         run: docker build -t max-bot-current .
-      - name: Verify Mail.ru inventory source
+      - name: Verify Mail.ru index source
         shell: bash
         run: |
           set -euo pipefail
@@ -29,15 +29,18 @@ jobs:
           node --check patch-v75-private-import-screenshots.mjs
           node --check patch-v76-forward-source-chat-register.mjs
           node --check patch-v77-mailru-inventory.mjs
-          grep -q 'BOT_IMAGE_REVISION=v77-mailru-inventory-20260829-1' Dockerfile
-          grep -q 'node patch-v77-mailru-inventory.mjs' Dockerfile
+          node --check patch-v78-mailru-index.mjs
+          grep -q 'BOT_IMAGE_REVISION=v78-mailru-index-20260830-1' Dockerfile
+          grep -q 'node patch-v78-mailru-index.mjs' Dockerfile
           grep -q 'imapflow' package-final.json
+          grep -q 'mailparser' package-final.json
           grep -q 'scanMailruInventory' patch-v77-mailru-inventory.mjs
+          grep -q 'buildMailruIndex' patch-v78-mailru-index.mjs
           grep -q 'MAILRU_LOGIN' worker-v77.js
           grep -q 'MAILRU_APP_PASSWORD' worker-v77.js
-          grep -q 'mail/env-keys' worker-v77.js
+          grep -q '/mail/index' worker-v77.js
           grep -Eq '"main"[[:space:]]*:[[:space:]]*"worker-v77\.js"' wrangler.jsonc
-          echo 'v77 Mail.ru inventory source is buildable'
+          echo 'v78 Mail.ru monthly index source is buildable'
 
   verify-live:
     needs: build-check
@@ -54,6 +57,7 @@ jobs:
             BOT_CODE="$(curl -sS -o /tmp/bot.txt -w '%{http_code}' --connect-timeout 10 --max-time 45 "$BASE/bot/health" || true)"
             MAIL_CODE="$(curl -sS -o /tmp/mail.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/mail/env-check" || true)"
             KEYS_CODE="$(curl -sS -o /tmp/keys.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/mail/env-keys" || true)"
+            INDEX_CODE="$(curl -sS -o /tmp/index.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/mail/index?month=2026-08" || true)"
             EXPORT_CODE="$(curl -sS -o /tmp/export.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/health?chat_id=$CHAT" || true)"
             WEBHOOK_CODE="$(curl -sS -o /tmp/webhook.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/max-webhook" || true)"
             MEDIA_CODE="$(curl -sS -o /tmp/media.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/export/media?mode=all&chat_id=$CHAT" || true)"
@@ -61,6 +65,7 @@ jobs:
             echo "bot=$BOT_CODE body=$(head -c 1800 /tmp/bot.txt 2>/dev/null || true)"
             echo "mail=$MAIL_CODE body=$(head -c 500 /tmp/mail.txt 2>/dev/null || true)"
             echo "keys=$KEYS_CODE body=$(head -c 1000 /tmp/keys.txt 2>/dev/null || true)"
+            echo "index=$INDEX_CODE body=$(head -c 300 /tmp/index.txt 2>/dev/null || true)"
             echo "export=$EXPORT_CODE body=$(head -c 1000 /tmp/export.txt 2>/dev/null || true)"
             echo "webhook=$WEBHOOK_CODE body=$(head -c 800 /tmp/webhook.txt 2>/dev/null || true)"
             echo "media=$MEDIA_CODE body=$(head -c 300 /tmp/media.txt 2>/dev/null || true)"
@@ -70,11 +75,14 @@ jobs:
               && grep -q '"privateImportScreenshots":true' /tmp/bot.txt \
               && grep -q '"forwardSourceChatRegister":true' /tmp/bot.txt \
               && grep -q '"mailruInventory":true' /tmp/bot.txt \
+              && grep -q '"mailruIndex":true' /tmp/bot.txt \
               && grep -q '"webhookConfigured":true' /tmp/bot.txt \
               && [ "$MAIL_CODE" = "200" ] \
               && grep -q '"login":true' /tmp/mail.txt \
               && grep -q '"password":true' /tmp/mail.txt \
               && [ "$KEYS_CODE" = "200" ] \
+              && [ "$INDEX_CODE" = "403" ] \
+              && grep -q 'Forbidden' /tmp/index.txt \
               && [ "$EXPORT_CODE" = "200" ] \
               && grep -q '"version":"worker-v72-multichat-durable-export"' /tmp/export.txt \
               && grep -q '"readable":true' /tmp/export.txt \
@@ -82,10 +90,10 @@ jobs:
               && grep -q '"webhook":"ready"' /tmp/webhook.txt \
               && [ "$MEDIA_CODE" = "403" ] \
               && grep -q 'Forbidden' /tmp/media.txt; then
-              echo 'LIVE_V77_MAILRU_READY'
+              echo 'LIVE_V78_MAILRU_INDEX_READY'
               exit 0
             fi
             sleep 15
           done
-          echo 'LIVE_V77_NOT_READY'
+          echo 'LIVE_V78_NOT_READY'
           exit 1
