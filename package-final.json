@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7",
-    "sharp": "^0.34.3"
+    "sharp": "^0.34.3",
+    "imapflow": "^1.7.6"
   },
   "devDependencies": {
     "wrangler": "^4.125.0"
