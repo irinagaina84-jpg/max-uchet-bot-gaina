@@ -10,8 +10,26 @@ export class MaxBotContainer extends BaseMaxBotContainer {
   };
 }
 
+function hasValue(value) {
+  return typeof value === "string" ? value.trim().length > 0 : Boolean(value);
+}
+
 export default {
   async fetch(request, runtimeEnv, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === "/mail/env-check") {
+      return Response.json({
+        ok: true,
+        runtime: {
+          login: hasValue(runtimeEnv?.MAILRU_LOGIN),
+          password: hasValue(runtimeEnv?.MAILRU_APP_PASSWORD),
+        },
+        global: {
+          login: hasValue(env.MAILRU_LOGIN),
+          password: hasValue(env.MAILRU_APP_PASSWORD),
+        },
+      }, { headers: { "Cache-Control": "no-store" } });
+    }
     return currentWorker.fetch(request, runtimeEnv, ctx);
   },
 
