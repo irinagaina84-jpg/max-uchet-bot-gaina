@@ -10,20 +10,20 @@ function mustReplace(oldText, newText, label) {
 }
 
 if (!code.includes('import { ImapFlow } from "imapflow";')) {
-  mustReplace(
-    'import { randomUUID } from "node:crypto";',
-    'import { randomUUID } from "node:crypto";\nimport { ImapFlow } from "imapflow";',
-    "imapflow import"
-  );
+  const cryptoImport = code.match(/import\s+\{[^\n}]*\}\s+from\s+"node:crypto";/);
+  if (!cryptoImport) throw new Error("v77 crypto import anchor not found");
+  code = code.replace(cryptoImport[0], cryptoImport[0] + '\nimport { ImapFlow } from "imapflow";');
+  console.log("v77 patched: imapflow import");
 }
 
-const seededLine = 'const SEEDED_CHAT_IDS = (process.env.WATCH_CHAT_IDS || "").split(",").map((x) => x.trim()).filter(Boolean);';
 if (!code.includes('const MAILRU_LOGIN =')) {
-  mustReplace(
-    seededLine,
-    seededLine + '\nconst MAILRU_LOGIN = (process.env.MAILRU_LOGIN || "").trim();\nconst MAILRU_APP_PASSWORD = (process.env.MAILRU_APP_PASSWORD || "").trim();\nconst MAILRU_LOOKBACK_DAYS = Math.max(30, Number(process.env.MAILRU_LOOKBACK_DAYS || 400));',
-    "mail env"
+  const seededMatch = code.match(/const SEEDED_CHAT_IDS = [^\n]+;/);
+  if (!seededMatch) throw new Error("v77 SEEDED_CHAT_IDS anchor not found");
+  code = code.replace(
+    seededMatch[0],
+    seededMatch[0] + '\nconst MAILRU_LOGIN = (process.env.MAILRU_LOGIN || "").trim();\nconst MAILRU_APP_PASSWORD = (process.env.MAILRU_APP_PASSWORD || "").trim();\nconst MAILRU_LOOKBACK_DAYS = Math.max(30, Number(process.env.MAILRU_LOOKBACK_DAYS || 400));'
   );
+  console.log("v77 patched: mail env");
 }
 
 const privateAnchor = 'async function handlePrivate(message) {';
