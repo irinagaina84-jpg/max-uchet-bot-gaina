@@ -4,12 +4,12 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v84-mailru-year-checkpoint-runtime-r2";
+const RUNTIME_RESET_VERSION = "worker-v84-mailru-year-checkpoint-runtime-r3";
 const WORKER_VERSION = "worker-v84-mailru-year-checkpoint-routing";
 const encoder = new TextEncoder();
 
 export class MaxBotContainer extends ExportMaxBotContainer {
-  sleepAfter = "30m";
+  sleepAfter = "2h";
 
   async putMailYearCheckpoint(year, month, payloadText) {
     const y = String(year || "");
