@@ -1,0 +1,45 @@
+name: Mail.ru month export
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month in YYYY-MM format'
+        required: true
+        default: '2026-01'
+
+permissions:
+  contents: read
+
+jobs:
+  export-mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install mail dependencies
+        run: npm install --no-save imapflow mailparser
+
+      - name: Export month
+        env:
+          MAILRU_LOGIN: ${{ secrets.MAILRU_LOGIN }}
+          MAILRU_APP_PASSWORD: ${{ secrets.MAILRU_APP_PASSWORD }}
+          MAILRU_MONTH: ${{ inputs.month }}
+          MAILRU_OUT_DIR: mailru-export
+        run: node scripts/mailru-month-export.mjs
+
+      - name: Upload month files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mailru-${{ inputs.month }}
+          path: mailru-export/
+          if-no-files-found: warn
+          retention-days: 30
