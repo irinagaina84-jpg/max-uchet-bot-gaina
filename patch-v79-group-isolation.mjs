@@ -50,7 +50,6 @@ function groupScore(question, chatId, meta) {
     else if (token.length >= 6 && q.includes(token.slice(0, 5))) score += 40;
   }
 
-  // Stable aliases for the currently connected operational chats.
   if (title.includes("взлет") && (q.includes("взлет") || q.includes("амиди"))) score += 200;
   if (title.includes("амиди") && q.includes("амиди")) score += 200;
   if ((title.includes("констэво") || title.includes("констево")) && (q.includes("констэво") || q.includes("констево"))) score += 220;
@@ -103,8 +102,6 @@ mustReplace(
   "summary labels group"
 );
 
-// Narrow full-history semantic analysis to exactly one named group unless the
-// owner explicitly asks for all groups. Never silently merge unrelated chats.
 const answerStart = code.indexOf("async function answerWorkQuestion(question) {");
 const answerEnd = code.indexOf("\nasync function sendText(", answerStart);
 if (answerStart < 0 || answerEnd < 0) throw new Error("v79 answerWorkQuestion block not found");
@@ -120,8 +117,8 @@ if (!answerBlock.includes("const selectedWorkGroups = workGroupsForQuestion(ques
   if (!answerBlock.includes(loopOld)) throw new Error("v79 answer groups loop not found");
   answerBlock = answerBlock.replace(loopOld, 'for (const [chatId, meta] of selectedWorkGroups) {');
 
-  const dialogOld = 'const dialogContext = privateDialog.slice(-6).map((x) => `${x.role}: ${x.text}`).join("\\n");';
-  const dialogNew = 'const dialogContext = privateDialog.filter((x) => x.group_key === groupContextKey).slice(-6).map((x) => `${x.role}: ${x.text}`).join("\\n");';
+  const dialogOld = 'const dialogContext = privateDialog.filter((x) => x.role === "user").slice(-4).map((x) => `${x.role}: ${x.text}`).join("\\n");';
+  const dialogNew = 'const dialogContext = privateDialog.filter((x) => x.role === "user" && x.group_key === groupContextKey).slice(-4).map((x) => `${x.role}: ${x.text}`).join("\\n");';
   if (!answerBlock.includes(dialogOld)) throw new Error("v79 dialog context anchor not found");
   answerBlock = answerBlock.replace(dialogOld, dialogNew);
 
@@ -132,7 +129,6 @@ if (!answerBlock.includes("const selectedWorkGroups = workGroupsForQuestion(ques
 }
 code = code.slice(0, answerStart) + answerBlock + code.slice(answerEnd);
 
-// Exact ID/release lookups are also narrowed when the question names a group.
 const lookupStart = code.indexOf("async function exactLookup(question) {");
 const lookupEnd = code.indexOf("\nasync function answerWorkQuestion(question) {", lookupStart);
 if (lookupStart >= 0 && lookupEnd > lookupStart) {
@@ -148,8 +144,6 @@ if (lookupStart >= 0 && lookupEnd > lookupStart) {
   }
 }
 
-// Background ledger backfill must follow the selected group, never the first
-// seeded chat.
 const backfillOld = 'if (!summary?.backfill?.complete) { const primaryChat = SEEDED_CHAT_IDS[0]; const meta = knownGroups.get(String(primaryChat)); if (primaryChat) ensureLedgerBackfill(primaryChat, meta?.title || ("чат " + primaryChat)).catch((e) => { state.lastError = "ledger background: " + errText(e); }); }';
 const backfillNew = 'if (!summary?.backfill?.complete) { const primaryChat = summary?.chat_id; const meta = knownGroups.get(String(primaryChat)); if (primaryChat) ensureLedgerBackfill(primaryChat, meta?.title || summary?.chat_title || ("чат " + primaryChat)).catch((e) => { state.lastError = "ledger background: " + errText(e); }); }';
 if (code.includes(backfillOld)) code = code.replace(backfillOld, backfillNew);
