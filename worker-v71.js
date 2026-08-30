@@ -4,8 +4,8 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v83-mailru-year-parallel-runtime-r1";
-const WORKER_VERSION = "worker-v83-mailru-year-parallel-routing";
+const RUNTIME_RESET_VERSION = "worker-v85-mailru-month-on-demand-runtime-r1";
+const WORKER_VERSION = "worker-v85-mailru-month-on-demand-routing";
 
 export class MaxBotContainer extends ExportMaxBotContainer {
   sleepAfter = "30m";
