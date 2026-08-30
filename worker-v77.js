@@ -28,6 +28,22 @@ function mailBindingNames(source) {
   }
 }
 
+function mailQueryParam(url, name) {
+  const direct = url.searchParams.get(name);
+  if (direct != null && direct !== "") return direct;
+
+  // MAX/mobile browsers can preserve HTML escaping in a detected link,
+  // turning &month= into &amp;month=. Accept that form as well.
+  const escaped = url.searchParams.get(`amp;${name}`);
+  if (escaped != null && escaped !== "") return escaped;
+
+  const repaired = String(url.search || "")
+    .replace(/&amp;/gi, "&")
+    .replace(/%26amp%3B/gi, "&")
+    .replace(/^\?/, "");
+  return new URLSearchParams(repaired).get(name) || "";
+}
+
 async function sha256Hex(value) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(String(value || "")));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -38,11 +54,11 @@ async function serveMailIndex(request, runtimeEnv) {
   const token = String(runtimeEnv?.MAX_BOT_TOKEN || "");
   if (!token) return new Response("MAX_BOT_TOKEN is not configured", { status: 503 });
   const expected = (await sha256Hex(token)).slice(0, 32);
-  if (url.searchParams.get("t") !== expected) return new Response("Forbidden", { status: 403 });
+  if (mailQueryParam(url, "t") !== expected) return new Response("Forbidden", { status: 403 });
 
-  const month = String(url.searchParams.get("month") || "");
+  const month = String(mailQueryParam(url, "month") || "");
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return new Response("Invalid month", { status: 400 });
-  const format = url.searchParams.get("format") === "csv" ? "csv" : "json";
+  const format = mailQueryParam(url, "format") === "csv" ? "csv" : "json";
   const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
   const response = await container.fetch(new Request(
     "http://container/mail/index?month=" + encodeURIComponent(month) + "&format=" + encodeURIComponent(format),
