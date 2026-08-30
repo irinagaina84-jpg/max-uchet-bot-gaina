@@ -1,0 +1,47 @@
+name: Mail.ru 2026 all months export
+
+on:
+  push:
+    paths:
+      - '.github/mailru-export-all.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install mail dependencies
+        run: npm install --no-save imapflow mailparser
+
+      - name: Export January to August 2026
+        env:
+          MAILRU_LOGIN: ${{ secrets.MAILRU_LOGIN }}
+          MAILRU_APP_PASSWORD: ${{ secrets.MAILRU_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for m in 01 02 03 04 05 06 07 08; do
+            month="2026-$m"
+            echo "===== $month ====="
+            MAILRU_MONTH="$month" MAILRU_OUT_DIR="mailru-all/$month" node scripts/mailru-month-export.mjs
+          done
+
+      - name: Upload all month files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mailru-2026-01-08
+          path: mailru-all/
+          if-no-files-found: warn
+          retention-days: 30
