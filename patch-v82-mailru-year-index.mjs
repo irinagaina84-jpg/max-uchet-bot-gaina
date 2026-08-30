@@ -171,10 +171,16 @@ if (!code.includes('mediaUrl.pathname === "/mail/year"')) {
   }`, "year HTTP export");
 }
 
-if (code.includes("mailIndexAlias: true,") && !code.includes("mailYearIndex: true,")) {
+if (!/mailYearIndex\s*:\s*true/.test(code)) {
+  if (!code.includes("mailIndexAlias: true,")) throw new Error("v82 health flag anchor not found");
   code = code.replace("mailIndexAlias: true,", "mailIndexAlias: true,\n  mailYearIndex: true,");
+  console.log("v82 patched: health flag");
 }
 
-code = code.replace(/version:\s*"v[^"]+"\s*,?/, 'version: "v82-mailru-year-index",');
+if (code.includes('version: "v81-mail-index-alias"')) {
+  code = code.replace('version: "v81-mail-index-alias"', 'version: "v82-mailru-year-index"');
+  console.log("v82 patched: runtime version");
+}
+
 fs.writeFileSync(path, code);
 console.log("v82 Mail.ru year index enabled");
