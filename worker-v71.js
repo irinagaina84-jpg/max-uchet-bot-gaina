@@ -102,7 +102,6 @@ function runtimeResetVersion(runtimeEnv) {
 async function ensureBotRuntime(runtimeEnv) {
   const container = containerHandle(runtimeEnv);
   const resetVersion = runtimeResetVersion(runtimeEnv);
-  try { await container.resetRuntimeOnce(resetVersion); } catch {}
 
   let lastError = null;
   for (let attempt = 0; attempt < 6; attempt += 1) {
