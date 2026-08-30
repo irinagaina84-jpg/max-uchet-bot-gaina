@@ -4,8 +4,8 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v79-group-isolation-runtime-r2";
-const WORKER_VERSION = "worker-v79-group-isolation-routing";
+const RUNTIME_RESET_VERSION = "worker-v80-mail-command-priority-runtime-r1";
+const WORKER_VERSION = "worker-v80-mail-command-priority-routing";
 
 // Keep the Node bot warm. The cron runs every 5 minutes; a 30-minute sleep
 // window also protects private commands when one cron invocation is delayed.
@@ -33,9 +33,6 @@ async function ensureBotRuntime(runtimeEnv) {
   const container = containerHandle(runtimeEnv);
   const resetVersion = runtimeResetVersion(runtimeEnv);
 
-  // Reset once when the release changes, and once more automatically when
-  // Mail.ru credentials become complete. This lets a newly added secret reach
-  // the already-running named container without manual intervention.
   try {
     await container.resetRuntimeOnce(resetVersion);
   } catch {
@@ -91,8 +88,6 @@ export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
 
-    // Durable-storage exports are handled by v70. These paths do not enter the
-    // legacy v64/v63 wrappers and therefore cannot restart the chat bot.
     if (["/export/media", "/export/saved", "/export/health"].includes(url.pathname)) {
       return exportWorker.fetch(request, runtimeEnv, ctx);
     }
@@ -125,9 +120,6 @@ export default {
       }
     }
 
-    // All webhook, private-message, state and ledger traffic goes straight to
-    // the stable base worker. The obsolete v64/v63 image guards are bypassed;
-    // they were alternately destroying the same container on every request.
     return botWorker.fetch(request, runtimeEnv, ctx);
   },
 
