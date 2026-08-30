@@ -2,10 +2,11 @@ import { env } from "cloudflare:workers";
 import { getContainer } from "@cloudflare/containers";
 import currentWorker, { MaxBotContainer as BaseMaxBotContainer } from "./worker-v72.js";
 
-const MAIL_CONTAINER_INSTANCE = "mail-index-v85";
+const MAIL_CONTAINER_INSTANCE = "mail-index-v86";
 const encoder = new TextEncoder();
 
 export class MaxBotContainer extends BaseMaxBotContainer {
+  sleepAfter = "2h";
   envVars = {
     ...this.envVars,
     MAILRU_LOGIN: env.MAILRU_LOGIN || "",
@@ -104,7 +105,7 @@ h2{font-size:23px;margin:0 0 12px}p{font-size:17px;line-height:1.45;margin:10px 
 <body><div class="wrap"><div class="card">
 <h2><span class="dot"></span>Mail.ru: ${month}</h2>
 <p id="status">Готовлю ${label}-файл. Страница не зависла.</p>
-<p class="muted">Проверяю готовность автоматически. Можно оставить эту страницу открытой.</p>
+<p class="muted">Месяцы обрабатываются по одному. Проверяю готовность автоматически.</p>
 <button id="retry" type="button">Проверить сейчас</button>
 </div></div>
 <script>
@@ -142,9 +143,9 @@ h2{font-size:23px;margin:0 0 12px}p{font-size:17px;line-height:1.45;margin:10px 
         retry.onclick = () => { finished = false; check(); };
         return;
       }
-      status.textContent = 'Индекс строится. Следующая проверка через 5 секунд…';
+      status.textContent = 'Индекс строится или ждёт очереди. Следующая проверка через 5 секунд…';
     } catch (e) {
-      status.textContent = 'Индекс ещё строится. Повторяю проверку…';
+      status.textContent = 'Ещё не готово. Повторяю проверку…';
     } finally {
       clearTimeout(timer);
       busy = false;
