@@ -32,8 +32,6 @@ function mailQueryParam(url, name) {
   const direct = url.searchParams.get(name);
   if (direct != null && direct !== "") return direct;
 
-  // MAX/mobile browsers can preserve HTML escaping in a detected link,
-  // turning &month= into &amp;month=. Accept that form as well.
   const escaped = url.searchParams.get(`amp;${name}`);
   if (escaped != null && escaped !== "") return escaped;
 
@@ -49,13 +47,19 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function serveMailIndex(request, runtimeEnv) {
+async function authorizedMailRequest(request, runtimeEnv) {
   const url = new URL(request.url);
   const token = String(runtimeEnv?.MAX_BOT_TOKEN || "");
-  if (!token) return new Response("MAX_BOT_TOKEN is not configured", { status: 503 });
+  if (!token) return { error: new Response("MAX_BOT_TOKEN is not configured", { status: 503 }) };
   const expected = (await sha256Hex(token)).slice(0, 32);
-  if (mailQueryParam(url, "t") !== expected) return new Response("Forbidden", { status: 403 });
+  if (mailQueryParam(url, "t") !== expected) return { error: new Response("Forbidden", { status: 403 }) };
+  return { url };
+}
 
+async function serveMailIndex(request, runtimeEnv) {
+  const auth = await authorizedMailRequest(request, runtimeEnv);
+  if (auth.error) return auth.error;
+  const url = auth.url;
   const month = String(mailQueryParam(url, "month") || "");
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return new Response("Invalid month", { status: 400 });
   const format = mailQueryParam(url, "format") === "csv" ? "csv" : "json";
@@ -69,11 +73,31 @@ async function serveMailIndex(request, runtimeEnv) {
   return new Response(response.body, { status: response.status, headers });
 }
 
+async function serveMailYear(request, runtimeEnv) {
+  const auth = await authorizedMailRequest(request, runtimeEnv);
+  if (auth.error) return auth.error;
+  const url = auth.url;
+  const year = String(mailQueryParam(url, "year") || "");
+  if (!/^20\d{2}$/.test(year)) return new Response("Invalid year", { status: 400 });
+  const format = mailQueryParam(url, "format") === "csv" ? "csv" : "json";
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+  const response = await container.fetch(new Request(
+    "http://container/mail/year?year=" + encodeURIComponent(year) + "&format=" + encodeURIComponent(format),
+    { method: "GET" }
+  ));
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", "no-store");
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/mail/index") {
       return serveMailIndex(request, runtimeEnv);
+    }
+    if (url.pathname === "/mail/year") {
+      return serveMailYear(request, runtimeEnv);
     }
     if (url.pathname === "/mail/env-check") {
       return Response.json({
