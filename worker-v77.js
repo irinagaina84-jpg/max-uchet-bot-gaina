@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getContainer } from "@cloudflare/containers";
 import currentWorker, { MaxBotContainer as BaseMaxBotContainer } from "./worker-v72.js";
 
-const CONTAINER_INSTANCE = "production";
+const MAIL_CONTAINER_INSTANCE = "mail-index-v85";
 const encoder = new TextEncoder();
 
 export class MaxBotContainer extends BaseMaxBotContainer {
@@ -63,13 +63,14 @@ async function serveMailIndex(request, runtimeEnv) {
   const month = String(mailQueryParam(url, "month") || "");
   if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) return new Response("Invalid month", { status: 400 });
   const format = mailQueryParam(url, "format") === "csv" ? "csv" : "json";
-  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, MAIL_CONTAINER_INSTANCE);
   const response = await container.fetch(new Request(
     "http://container/mail/index?month=" + encodeURIComponent(month) + "&format=" + encodeURIComponent(format),
     { method: "GET" }
   ));
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
+  headers.set("X-Mail-Container", MAIL_CONTAINER_INSTANCE);
   return new Response(response.body, { status: response.status, headers });
 }
 
@@ -80,13 +81,14 @@ async function serveMailYear(request, runtimeEnv) {
   const year = String(mailQueryParam(url, "year") || "");
   if (!/^20\d{2}$/.test(year)) return new Response("Invalid year", { status: 400 });
   const format = mailQueryParam(url, "format") === "csv" ? "csv" : "json";
-  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, CONTAINER_INSTANCE);
+  const container = getContainer(runtimeEnv.MAX_BOT_CONTAINER, MAIL_CONTAINER_INSTANCE);
   const response = await container.fetch(new Request(
     "http://container/mail/year?year=" + encodeURIComponent(year) + "&format=" + encodeURIComponent(format),
     { method: "GET" }
   ));
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", "no-store");
+  headers.set("X-Mail-Container", MAIL_CONTAINER_INSTANCE);
   return new Response(response.body, { status: response.status, headers });
 }
 
