@@ -2,7 +2,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 COPY russian-trusted-root-ca.pem /app/russian-trusted-root-ca.pem
 ENV NODE_EXTRA_CA_CERTS=/app/russian-trusted-root-ca.pem
-ENV BOT_IMAGE_REVISION=v81-mail-index-alias-20260830-1
+ENV BOT_IMAGE_REVISION=v82-mailru-year-index-20260830-1
 COPY package-final.json ./package.json
 RUN npm install --omit=dev
 COPY bot-giga-v14.js ./bot-giga-v14.js
@@ -43,6 +43,7 @@ COPY patch-v77-mailru-inventory.mjs ./patch-v77-mailru-inventory.mjs
 COPY patch-v78-mailru-index.mjs ./patch-v78-mailru-index.mjs
 COPY patch-v79-group-isolation.mjs ./patch-v79-group-isolation.mjs
 COPY patch-v80-mail-command-priority.mjs ./patch-v80-mail-command-priority.mjs
+COPY patch-v82-mailru-year-index.mjs ./patch-v82-mailru-year-index.mjs
 RUN node patch-v14-fullchat.mjs
 RUN node patch-v14-silent.mjs
 RUN node patch-v14-webhook.mjs
@@ -80,6 +81,7 @@ RUN node patch-v77-mailru-inventory.mjs
 RUN node patch-v78-mailru-index.mjs
 RUN node patch-v79-group-isolation.mjs
 RUN node patch-v80-mail-command-priority.mjs
+RUN node patch-v82-mailru-year-index.mjs
 RUN node --check bot.js
 EXPOSE 3000
 CMD ["node", "bot.js"]
