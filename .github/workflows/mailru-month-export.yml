@@ -7,6 +7,9 @@ on:
         description: 'Month in YYYY-MM format'
         required: true
         default: '2026-01'
+  push:
+    paths:
+      - '.github/mailru-export-month.txt'
 
 permissions:
   contents: read
@@ -24,6 +27,22 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Resolve month
+        id: month
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MONTH="${{ inputs.month }}"
+          else
+            MONTH="$(tr -d '[:space:]' < .github/mailru-export-month.txt)"
+          fi
+          if ! [[ "$MONTH" =~ ^20[0-9]{2}-(0[1-9]|1[0-2])$ ]]; then
+            echo "Invalid month: $MONTH" >&2
+            exit 1
+          fi
+          echo "month=$MONTH" >> "$GITHUB_OUTPUT"
+          echo "Export month: $MONTH"
+
       - name: Install mail dependencies
         run: npm install --no-save imapflow mailparser
 
@@ -31,7 +50,7 @@ jobs:
         env:
           MAILRU_LOGIN: ${{ secrets.MAILRU_LOGIN }}
           MAILRU_APP_PASSWORD: ${{ secrets.MAILRU_APP_PASSWORD }}
-          MAILRU_MONTH: ${{ inputs.month }}
+          MAILRU_MONTH: ${{ steps.month.outputs.month }}
           MAILRU_OUT_DIR: mailru-export
         run: node scripts/mailru-month-export.mjs
 
@@ -39,7 +58,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mailru-${{ inputs.month }}
+          name: mailru-${{ steps.month.outputs.month }}
           path: mailru-export/
           if-no-files-found: warn
           retention-days: 30
