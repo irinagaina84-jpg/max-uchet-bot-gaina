@@ -4,7 +4,7 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v81-mail-index-alias-runtime-r1";
+const RUNTIME_RESET_VERSION = "worker-v81-mail-index-alias-runtime-r2";
 const WORKER_VERSION = "worker-v81-mail-index-alias-routing";
 
 export class MaxBotContainer extends ExportMaxBotContainer {
