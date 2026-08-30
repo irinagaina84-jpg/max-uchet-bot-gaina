@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { getContainer } from "@cloudflare/containers";
 import currentWorker, { MaxBotContainer as BaseMaxBotContainer } from "./worker-v72.js";
 
-const MAIL_CONTAINER_INSTANCE = "mail-index-v86";
+const MAIL_CONTAINER_INSTANCE = "mail-index-v87";
 const encoder = new TextEncoder();
 
 export class MaxBotContainer extends BaseMaxBotContainer {
@@ -105,7 +105,7 @@ h2{font-size:23px;margin:0 0 12px}p{font-size:17px;line-height:1.45;margin:10px 
 <body><div class="wrap"><div class="card">
 <h2><span class="dot"></span>Mail.ru: ${month}</h2>
 <p id="status">Готовлю ${label}-файл. Страница не зависла.</p>
-<p class="muted">Месяцы обрабатываются по одному. Проверяю готовность автоматически.</p>
+<p class="muted">Месяцы обрабатываются по одному. Если одна папка Mail.ru зависает, она будет пропущена по таймауту.</p>
 <button id="retry" type="button">Проверить сейчас</button>
 </div></div>
 <script>
