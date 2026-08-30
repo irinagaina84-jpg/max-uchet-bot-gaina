@@ -4,11 +4,9 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v80-mail-command-priority-runtime-r1";
-const WORKER_VERSION = "worker-v80-mail-command-priority-routing";
+const RUNTIME_RESET_VERSION = "worker-v81-mail-index-alias-runtime-r1";
+const WORKER_VERSION = "worker-v81-mail-index-alias-routing";
 
-// Keep the Node bot warm. The cron runs every 5 minutes; a 30-minute sleep
-// window also protects private commands when one cron invocation is delayed.
 export class MaxBotContainer extends ExportMaxBotContainer {
   sleepAfter = "30m";
 }
@@ -32,12 +30,7 @@ function runtimeResetVersion(runtimeEnv) {
 async function ensureBotRuntime(runtimeEnv) {
   const container = containerHandle(runtimeEnv);
   const resetVersion = runtimeResetVersion(runtimeEnv);
-
-  try {
-    await container.resetRuntimeOnce(resetVersion);
-  } catch {
-    // A replacement process can still be started by the health request.
-  }
+  try { await container.resetRuntimeOnce(resetVersion); } catch {}
 
   let lastError = null;
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -49,9 +42,7 @@ async function ensureBotRuntime(runtimeEnv) {
       let data = null;
       try { data = JSON.parse(text); } catch { data = { raw: text }; }
       return { ok: true, status: response.status, data, resetVersion };
-    } catch (error) {
-      lastError = error;
-    }
+    } catch (error) { lastError = error; }
   }
   throw lastError || new Error("MAX bot container did not start");
 }
@@ -64,68 +55,35 @@ async function diagnostic(runtimeEnv, full = false) {
     container.getRuntimeState(),
     container.ledgerSummary({ chat_id: CURRENT_CHAT_ID }),
   ]);
-
-  const result = {
-    ok: true,
-    workerVersion: WORKER_VERSION,
-    currentChatId: CURRENT_CHAT_ID,
-    knownChatCount: knownChats.length,
-    knownChats,
-    recentUpdates,
-    runtime,
-    ledger,
-  };
-
-  if (full) {
-    const health = await ensureBotRuntime(runtimeEnv);
-    result.container = health.data;
-  }
-
+  const result = { ok: true, workerVersion: WORKER_VERSION, currentChatId: CURRENT_CHAT_ID, knownChatCount: knownChats.length, knownChats, recentUpdates, runtime, ledger };
+  if (full) result.container = (await ensureBotRuntime(runtimeEnv)).data;
   return Response.json(result, { headers: { "Cache-Control": "no-store" } });
 }
 
 export default {
   async fetch(request, runtimeEnv, ctx) {
     const url = new URL(request.url);
-
-    if (["/export/media", "/export/saved", "/export/health"].includes(url.pathname)) {
-      return exportWorker.fetch(request, runtimeEnv, ctx);
-    }
-
+    if (["/export/media", "/export/saved", "/export/health"].includes(url.pathname)) return exportWorker.fetch(request, runtimeEnv, ctx);
     if (url.pathname === "/bot/health") {
       try {
         const result = await ensureBotRuntime(runtimeEnv);
-        return Response.json({ ok: true, runtime: result.resetVersion, container: result.data }, {
-          headers: { "Cache-Control": "no-store" },
-        });
+        return Response.json({ ok: true, runtime: result.resetVersion, container: result.data }, { headers: { "Cache-Control": "no-store" } });
       } catch (error) {
-        return Response.json({ ok: false, runtime: runtimeResetVersion(runtimeEnv), error: String(error?.message || error) }, {
-          status: 503,
-          headers: { "Cache-Control": "no-store" },
-        });
+        return Response.json({ ok: false, runtime: runtimeResetVersion(runtimeEnv), error: String(error?.message || error) }, { status: 503, headers: { "Cache-Control": "no-store" } });
       }
     }
-
     if (url.pathname === "/diagnostic") {
       try { return await diagnostic(runtimeEnv, false); }
-      catch (error) {
-        return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 });
-      }
+      catch (error) { return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 }); }
     }
-
     if (url.pathname === "/diagnostic/full") {
       try { return await diagnostic(runtimeEnv, true); }
-      catch (error) {
-        return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 });
-      }
+      catch (error) { return Response.json({ ok: false, workerVersion: WORKER_VERSION, error: String(error?.message || error) }, { status: 500 }); }
     }
-
     return botWorker.fetch(request, runtimeEnv, ctx);
   },
 
   async scheduled(_controller, runtimeEnv, ctx) {
-    ctx.waitUntil(ensureBotRuntime(runtimeEnv).catch((error) => {
-      console.error("MAX bot runtime keepalive failed", error);
-    }));
+    ctx.waitUntil(ensureBotRuntime(runtimeEnv).catch((error) => console.error("MAX bot runtime keepalive failed", error)));
   },
 };
