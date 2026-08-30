@@ -4,7 +4,7 @@ import botWorker from "./worker.js";
 
 const CONTAINER_INSTANCE = "production";
 const CURRENT_CHAT_ID = "-77828005225953";
-const RUNTIME_RESET_VERSION = "worker-v84-mailru-year-checkpoint-runtime-r1";
+const RUNTIME_RESET_VERSION = "worker-v84-mailru-year-checkpoint-runtime-r2";
 const WORKER_VERSION = "worker-v84-mailru-year-checkpoint-routing";
 const encoder = new TextEncoder();
 
@@ -23,7 +23,6 @@ export class MaxBotContainer extends ExportMaxBotContainer {
     const old = await this.ctx.storage.list({ prefix, limit: 1000 });
     for (const key of old.keys()) await this.ctx.storage.delete(key);
 
-    // Keep every Durable Object value comfortably below the per-value size limit.
     const chunkChars = 20000;
     const chunks = Math.ceil(text.length / chunkChars);
     for (let i = 0; i < chunks; i += 1) {
