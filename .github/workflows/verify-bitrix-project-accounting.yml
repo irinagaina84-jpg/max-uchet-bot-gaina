@@ -11,24 +11,24 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 8
     steps:
-      - name: Wait for clients and orders dashboard
+      - name: Wait for clients, orders and payment boards
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 36); do
-            CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 120 "$BASE/bitrix/health" || true)"
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 60 "$BASE/bitrix/health" || true)"
             echo "attempt=$i code=$CODE body=$(cat /tmp/health.json 2>/dev/null || true)"
             if [ "$CODE" = "200" ] \
-              && grep -q 'worker-v101-bitrix-clients-orders-dashboard' /tmp/health.json \
+              && grep -q 'worker-v102-bitrix-crm-boards' /tmp/health.json \
               && grep -q '"clientsReady":true' /tmp/health.json \
               && grep -q '"ordersBoardReady":true' /tmp/health.json \
-              && grep -q '"companyBaseReady":true' /tmp/health.json; then
-              echo 'BITRIX_CLIENTS_ORDERS_DASHBOARD_READY'
+              && grep -q '"paymentsBoardReady":true' /tmp/health.json; then
+              echo 'BITRIX_CRM_BOARDS_READY'
               exit 0
             fi
-            sleep 10
+            sleep 8
           done
           exit 1
