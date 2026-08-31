@@ -1,0 +1,43 @@
+name: Configure Bitrix modern deal card
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for v93
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/a.json -w '%{http_code}' --connect-timeout 10 --max-time 40 "$BASE/bitrix/crm/modern-card/audit" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/a.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q 'worker-v93-bitrix-modern-card' /tmp/a.json; then break; fi
+            sleep 10
+          done
+          grep -q 'worker-v93-bitrix-modern-card' /tmp/a.json
+      - name: Setup safely
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          CODE="$(curl -sS -o /tmp/setup.json -w '%{http_code}' --connect-timeout 10 --max-time 180 "$BASE/bitrix/crm/modern-card/setup" || true)"
+          echo "code=$CODE"; cat /tmp/setup.json
+          test "$CODE" = "200"
+          grep -q '"ok":true' /tmp/setup.json
+      - name: Audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          curl -sS --connect-timeout 10 --max-time 120 "$BASE/bitrix/crm/modern-card/audit" | tee /tmp/final.json
+          grep -q 'worker-v93-bitrix-modern-card' /tmp/final.json
