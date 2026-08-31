@@ -1,0 +1,39 @@
+name: Create Bitrix document folders
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for v79 and create document folders
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/storages.json -w '%{http_code}' --connect-timeout 10 --max-time 35 "$BASE/bitrix/storages" || true)"
+            echo "attempt=$i code=$CODE body=$(head -c 3000 /tmp/storages.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q 'worker-v79-bitrix-folders' /tmp/storages.json; then
+              break
+            fi
+            sleep 10
+          done
+          grep -q 'worker-v79-bitrix-folders' /tmp/storages.json
+          BOOT_CODE="$(curl -sS -o /tmp/bootstrap.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bitrix/bootstrap" || true)"
+          echo "bootstrap_code=$BOOT_CODE"
+          cat /tmp/bootstrap.json
+          test "$BOOT_CODE" = "200"
+          grep -q '"ok":true' /tmp/bootstrap.json
+          grep -q '00 УЧЕТ — ИНТЕРФОРТУМ + АМИДИ — КОНТЕЙНЕРЫ' /tmp/bootstrap.json
+          grep -q '01 ИНТЕРФОРТУМ — проекты и первичка' /tmp/bootstrap.json
+          grep -q '02 АМИДИ ГРУПП — проекты и первичка' /tmp/bootstrap.json
+          grep -q '07 ЗАПРОСЫ БАНКОВ — 115-ФЗ' /tmp/bootstrap.json
+          echo 'BITRIX_DOCUMENT_FOLDERS_READY'
