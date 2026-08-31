@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Wait for suppliers and payment registers
+      - name: Wait for clients and orders dashboard
         shell: bash
         run: |
           set -euo pipefail
@@ -22,10 +22,11 @@ jobs:
             CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 120 "$BASE/bitrix/health" || true)"
             echo "attempt=$i code=$CODE body=$(cat /tmp/health.json 2>/dev/null || true)"
             if [ "$CODE" = "200" ] \
-              && grep -q 'worker-v100-bitrix-suppliers-payments' /tmp/health.json \
-              && grep -q '"suppliersReady":true' /tmp/health.json \
-              && grep -q '"paymentsReady":true' /tmp/health.json; then
-              echo 'BITRIX_PROJECTS_SUPPLIERS_PAYMENTS_READY'
+              && grep -q 'worker-v101-bitrix-clients-orders-dashboard' /tmp/health.json \
+              && grep -q '"clientsReady":true' /tmp/health.json \
+              && grep -q '"ordersBoardReady":true' /tmp/health.json \
+              && grep -q '"companyBaseReady":true' /tmp/health.json; then
+              echo 'BITRIX_CLIENTS_ORDERS_DASHBOARD_READY'
               exit 0
             fi
             sleep 10
