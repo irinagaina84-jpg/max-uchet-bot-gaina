@@ -48,7 +48,8 @@ const APPS = [
     unloadDate: "2026-07-20",
     containerType: "40 HC",
     qty: 1,
-    note: "Стройматериалы. Фото контейнера + пломба.",
+    sourceStatus: "В работе",
+    note: "Статус в исходном реестре: В работе. Стройматериалы. Фото контейнера + пломба.",
   },
   {
     no: "252",
@@ -64,7 +65,8 @@ const APPS = [
     unloadDate: "2026-07-30",
     containerType: "40 HC",
     qty: 1,
-    note: "Стройматериалы. Фото контейнера + пломба.",
+    sourceStatus: "В работе",
+    note: "Статус в исходном реестре: В работе. Стройматериалы. Фото контейнера + пломба.",
   },
 ];
 
@@ -100,7 +102,6 @@ async function ensureDeal(env, app) {
   if (existing?.ID) return { no: app.no, id: existing.ID, created: false };
 
   const workType = await enumValueId(env, "UF_CRM_WORK_TYPE", "Перевозки");
-  const transportStatus = await enumValueId(env, "UF_CRM_TRANSPORT_STATUS", "Закрыто");
   const fields = {
     TITLE: app.title,
     UF_CRM_LEGAL_ENTITY: "ИНТЕРФОРТУМ",
@@ -119,7 +120,6 @@ async function ensureDeal(env, app) {
     COMMENTS: app.note,
   };
   if (workType) fields.UF_CRM_WORK_TYPE = workType;
-  if (transportStatus) fields.UF_CRM_TRANSPORT_STATUS = transportStatus;
   const id = await bx(env, "crm.deal.add", { fields, params: { REGISTER_SONET_EVENT: "N" } });
   return { no: app.no, id, created: true };
 }
