@@ -1,0 +1,32 @@
+name: Verify Bitrix transport structure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for transport setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 36); do
+            CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bitrix/health" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/health.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] \
+              && grep -q 'worker-v95-bitrix-transport' /tmp/health.json \
+              && grep -q '"transportConfigured":true' /tmp/health.json; then
+              echo 'BITRIX_TRANSPORT_READY'
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
