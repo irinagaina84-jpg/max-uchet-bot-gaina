@@ -1,0 +1,38 @@
+name: Rebuild Bitrix working structure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for v85 and rebuild Bitrix structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/status.json -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/bitrix/structure" || true)"
+            echo "attempt=$i code=$CODE body=$(head -c 1200 /tmp/status.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q 'worker-v85-bitrix-clean-structure' /tmp/status.json; then
+              break
+            fi
+            sleep 10
+          done
+          grep -q 'worker-v85-bitrix-clean-structure' /tmp/status.json
+          CODE="$(curl -sS -o /tmp/rebuild.json -w '%{http_code}' --connect-timeout 10 --max-time 120 "$BASE/bitrix/rebuild-structure" || true)"
+          echo "rebuild_code=$CODE"
+          cat /tmp/rebuild.json
+          test "$CODE" = "200"
+          grep -q '"ok":true' /tmp/rebuild.json
+          grep -q '01 ИНТЕРФОРТУМ' /tmp/rebuild.json
+          grep -q '02 АМИДИ ГРУПП' /tmp/rebuild.json
+          grep -q '00 КАРТОЧКА И РЕКВИЗИТЫ' /tmp/rebuild.json
+          echo 'BITRIX_STRUCTURE_REBUILT'
