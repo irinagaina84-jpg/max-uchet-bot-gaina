@@ -1,8 +1,6 @@
-name: Finalize Bitrix clean structure
+name: Finalize Bitrix clean structure (manual)
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,30 +9,5 @@ permissions:
 jobs:
   finalize:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Wait for v88, remove legacy folders and verify tree
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 36); do
-            CODE="$(curl -sS -o /tmp/status.json -w '%{http_code}' --connect-timeout 10 --max-time 40 "$BASE/bitrix/import-company-card/status" || true)"
-            echo "wait=$i code=$CODE body=$(head -c 500 /tmp/status.json 2>/dev/null || true)"
-            if [ "$CODE" = "200" ] && grep -q 'worker-v88-bitrix-final-organizer' /tmp/status.json; then break; fi
-            sleep 10
-          done
-          grep -q 'worker-v88-bitrix-final-organizer' /tmp/status.json
-          CODE="$(curl -sS -o /tmp/maintenance.json -w '%{http_code}' --connect-timeout 10 --max-time 180 "$BASE/bitrix/final-maintenance" || true)"
-          echo "maintenance_code=$CODE"
-          cat /tmp/maintenance.json
-          test "$CODE" = "200"
-          grep -q '"ok":true' /tmp/maintenance.json
-          sleep 4
-          curl -sS --connect-timeout 10 --max-time 120 "$BASE/bitrix/final-tree" | tee /tmp/tree.json
-          grep -q '01 ИНТЕРФОРТУМ' /tmp/tree.json
-          grep -q '02 АМИДИ ГРУПП' /tmp/tree.json
-          grep -q '00 КАРТОЧКА И РЕКВИЗИТЫ' /tmp/tree.json
-          if grep -q '01 ИНТЕРФОРТУМ — проекты и первичка' /tmp/tree.json; then echo 'legacy IF folder remains' >&2; exit 1; fi
-          if grep -q '02 АМИДИ ГРУПП — проекты и первичка' /tmp/tree.json; then echo 'legacy AMIDI folder remains' >&2; exit 1; fi
-          echo 'BITRIX_FINAL_STRUCTURE_READY'
+      - run: echo 'Bitrix clean structure is finalized. Manual maintenance only.'
