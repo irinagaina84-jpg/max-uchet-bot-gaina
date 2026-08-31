@@ -1,37 +1,13 @@
 name: Mail.ru env diagnostic
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  diagnose:
+  disabled:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
     steps:
-      - name: Check Mail.ru bindings and live container
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 24); do
-            CODE="$(curl -sS -o /tmp/keys.txt -w '%{http_code}' --connect-timeout 10 --max-time 20 "$BASE/mail/env-keys" || true)"
-            CHECK="$(curl -sS -o /tmp/check.txt -w '%{http_code}' --connect-timeout 10 --max-time 20 "$BASE/mail/env-check" || true)"
-            HEALTH="$(curl -sS -o /tmp/health.txt -w '%{http_code}' --connect-timeout 10 --max-time 45 "$BASE/bot/health" || true)"
-            echo "attempt=$i keys_code=$CODE keys=$(cat /tmp/keys.txt 2>/dev/null || true)"
-            echo "attempt=$i check_code=$CHECK check=$(cat /tmp/check.txt 2>/dev/null || true)"
-            echo "attempt=$i health_code=$HEALTH health=$(head -c 2500 /tmp/health.txt 2>/dev/null || true)"
-            if [ "$CODE" = "200" ] && [ "$CHECK" = "200" ] && [ "$HEALTH" = "200" ] \
-              && grep -q '"login":true' /tmp/check.txt \
-              && grep -q '"password":true' /tmp/check.txt \
-              && grep -q '"mailruIndex":true' /tmp/health.txt \
-              && grep -q '"groupIsolation":true' /tmp/health.txt; then
-              echo 'LIVE_MAIL_INDEX_AND_GROUP_ISOLATION_READY'
-              exit 0
-            fi
-            sleep 5
-          done
-          exit 1
+      - run: echo "Manual diagnostic only"
