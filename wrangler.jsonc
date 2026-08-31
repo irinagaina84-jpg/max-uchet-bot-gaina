@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "max-uchet-bot-gaina",
-  "main": "worker-v118.js",
+  "main": "worker-v119.js",
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
