@@ -129,7 +129,7 @@ const folderErrors = [];
 
 for (const folder of folders) {
   console.log(`Scanning ${folder.path} (${folder.specialUse || 'normal'})...`);
-  const result = await timeout(scanFolder(folder), 180000, `folder ${folder.path}`).catch((error) => ({ rows: [], error: String(error?.message || error) }));
+  const result = await timeout(scanFolder(folder), 600000, `folder ${folder.path}`).catch((error) => ({ rows: [], error: String(error?.message || error) }));
   rows.push(...result.rows);
   if (result.error) folderErrors.push(`${folder.path}: ${result.error}`);
 }
