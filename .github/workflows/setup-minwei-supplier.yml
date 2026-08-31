@@ -1,8 +1,6 @@
 name: Setup Min Wei supplier
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,20 +9,6 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
     steps:
-      - name: Wait for worker and create supplier
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 24); do
-            CODE="$(curl -sS -o /tmp/result.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bitrix/setup-minwei-supplier" || true)"
-            echo "attempt=$i code=$CODE body=$(cat /tmp/result.json 2>/dev/null || true)"
-            if [ "$CODE" = "200" ] && grep -q '"ok":true' /tmp/result.json && grep -q 'worker-v109-minwei-supplier' /tmp/result.json; then
-              echo 'MIN_WEI_SUPPLIER_READY'
-              exit 0
-            fi
-            sleep 10
-          done
-          exit 1
+      - name: Legacy setup disabled
+        run: echo 'Legacy Min Wei supplier setup is manual-only; current importer manages supplier data idempotently.'
