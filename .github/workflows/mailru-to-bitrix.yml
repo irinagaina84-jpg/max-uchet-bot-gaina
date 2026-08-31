@@ -1,0 +1,72 @@
+name: Mail.ru → Bitrix24 Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Month in YYYY-MM format, or ALL for 2026-01..2026-08'
+        required: true
+        default: 'ALL'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    if: ${{ inputs.month != 'ALL' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-save imapflow mailparser
+      - name: Sync month to Bitrix24
+        env:
+          MAILRU_LOGIN: ${{ secrets.MAILRU_LOGIN }}
+          MAILRU_APP_PASSWORD: ${{ secrets.MAILRU_APP_PASSWORD }}
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          MAILRU_MONTH: ${{ inputs.month }}
+          BITRIX_ROOT_NAME: 'Логистика — Интерфортум и Амиди'
+        run: node scripts/mailru-to-bitrix.mjs | tee bitrix-sync-${{ inputs.month }}.log
+      - name: Upload sync log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitrix-sync-${{ inputs.month }}
+          path: bitrix-sync-${{ inputs.month }}.log
+          retention-days: 30
+
+  sync-all:
+    if: ${{ inputs.month == 'ALL' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        month: ['2026-01','2026-02','2026-03','2026-04','2026-05','2026-06','2026-07','2026-08']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-save imapflow mailparser
+      - name: Sync ${{ matrix.month }} to Bitrix24
+        env:
+          MAILRU_LOGIN: ${{ secrets.MAILRU_LOGIN }}
+          MAILRU_APP_PASSWORD: ${{ secrets.MAILRU_APP_PASSWORD }}
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          MAILRU_MONTH: ${{ matrix.month }}
+          BITRIX_ROOT_NAME: 'Логистика — Интерфортум и Амиди'
+        run: node scripts/mailru-to-bitrix.mjs | tee bitrix-sync-${{ matrix.month }}.log
+      - name: Upload sync log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitrix-sync-${{ matrix.month }}
+          path: bitrix-sync-${{ matrix.month }}.log
+          retention-days: 30
