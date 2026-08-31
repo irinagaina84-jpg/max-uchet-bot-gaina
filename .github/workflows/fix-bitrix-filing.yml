@@ -1,0 +1,30 @@
+name: Fix Bitrix registry filing
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for v89 and correct registry folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/fix.json -w '%{http_code}' --connect-timeout 10 --max-time 60 "$BASE/bitrix/fix-registry-filing" || true)"
+            echo "try=$i code=$CODE body=$(cat /tmp/fix.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q 'worker-v89-bitrix-filing-fix' /tmp/fix.json && grep -q '"ok":true' /tmp/fix.json; then
+              echo 'BITRIX_REGISTRY_FILING_FIXED'
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
