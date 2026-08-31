@@ -34,28 +34,14 @@ async function bx(env, method, params = {}) {
 }
 
 const ENUM_FIELDS = [
-  {
-    code: "WORK_TYPE",
-    label: "Направление учёта",
-    sort: 70,
-    values: ["Контейнеры", "Перевозки"],
-  },
+  { code: "WORK_TYPE", label: "Направление учёта", sort: 70, values: ["Контейнеры", "Перевозки"] },
   {
     code: "TRANSPORT_STATUS",
     label: "Статус перевозки",
     sort: 80,
     values: [
-      "Новая заявка",
-      "Подбор парка",
-      "Парк подтверждён",
-      "Машина назначена",
-      "Погрузка",
-      "В пути",
-      "Выгружено",
-      "Документы",
-      "Оплата парку",
-      "Закрыто",
-      "Отменено",
+      "Новая заявка", "Подбор парка", "Парк подтверждён", "Машина назначена", "Погрузка",
+      "В пути", "Выгружено", "Документы", "Оплата парку", "Закрыто", "Отменено",
     ],
   },
 ];
@@ -79,6 +65,9 @@ const TRANSPORT_FIELDS = [
   ["TRANSPORT_DOC_STATUS", "string", "Перевозки — документы / УПД / акт", 450],
 ];
 
+const INTERFORTUM_PARKS = ["ИП Справцев Леонид Васильевич", "ООО Гермес"];
+const PARK_SUBFOLDERS = ["01 ЗАЯВКИ", "02 РЕЙСЫ", "03 ДОКУМЕНТЫ", "04 ОПЛАТЫ", "05 СВЕРКА"];
+
 async function listUserFields(env) {
   const r = await bx(env, "crm.deal.userfield.list", { filter: { LANG: "ru" }, order: { SORT: "ASC" } });
   return Array.isArray(r) ? r : [];
@@ -86,30 +75,14 @@ async function listUserFields(env) {
 
 async function ensureEnum(env, def, existing) {
   const name = `UF_CRM_${def.code}`;
-  const found = existing.find(x => String(x?.FIELD_NAME || "") === name);
-  if (found) return { name, created: false };
-  const list = def.values.map((value, i) => ({
-    VALUE: value,
-    XML_ID: `IF_${def.code}_${i + 1}`,
-    SORT: (i + 1) * 100,
-    DEF: i === 0 ? "Y" : "N",
-  }));
+  if (existing.some(x => String(x?.FIELD_NAME || "") === name)) return { name, created: false };
+  const list = def.values.map((value, i) => ({ VALUE: value, XML_ID: `IF_${def.code}_${i + 1}`, SORT: (i + 1) * 100, DEF: i === 0 ? "Y" : "N" }));
   await bx(env, "crm.deal.userfield.add", {
     fields: {
-      FIELD_NAME: def.code,
-      USER_TYPE_ID: "enumeration",
-      XML_ID: `IF_${def.code}`,
-      SORT: def.sort,
-      MULTIPLE: "N",
-      MANDATORY: "N",
-      SHOW_FILTER: "Y",
-      SHOW_IN_LIST: "Y",
-      EDIT_IN_LIST: "Y",
-      EDIT_FORM_LABEL: def.label,
-      LIST_COLUMN_LABEL: def.label,
-      LIST_FILTER_LABEL: def.label,
-      LIST: list,
-      SETTINGS: { DISPLAY: "UI", LIST_HEIGHT: 1 },
+      FIELD_NAME: def.code, USER_TYPE_ID: "enumeration", XML_ID: `IF_${def.code}`, SORT: def.sort,
+      MULTIPLE: "N", MANDATORY: "N", SHOW_FILTER: "Y", SHOW_IN_LIST: "Y", EDIT_IN_LIST: "Y",
+      EDIT_FORM_LABEL: def.label, LIST_COLUMN_LABEL: def.label, LIST_FILTER_LABEL: def.label,
+      LIST: list, SETTINGS: { DISPLAY: "UI", LIST_HEIGHT: 1 },
     },
   });
   return { name, created: true };
@@ -118,22 +91,12 @@ async function ensureEnum(env, def, existing) {
 async function ensureField(env, def, existing) {
   const [code, type, label, sort] = def;
   const name = `UF_CRM_${code}`;
-  const found = existing.find(x => String(x?.FIELD_NAME || "") === name);
-  if (found) return { name, created: false };
+  if (existing.some(x => String(x?.FIELD_NAME || "") === name)) return { name, created: false };
   await bx(env, "crm.deal.userfield.add", {
     fields: {
-      FIELD_NAME: code,
-      USER_TYPE_ID: type,
-      XML_ID: `IF_${code}`,
-      SORT: sort,
-      MULTIPLE: "N",
-      MANDATORY: "N",
-      SHOW_FILTER: "Y",
-      SHOW_IN_LIST: "Y",
-      EDIT_IN_LIST: "Y",
-      EDIT_FORM_LABEL: label,
-      LIST_COLUMN_LABEL: label,
-      LIST_FILTER_LABEL: label,
+      FIELD_NAME: code, USER_TYPE_ID: type, XML_ID: `IF_${code}`, SORT: sort,
+      MULTIPLE: "N", MANDATORY: "N", SHOW_FILTER: "Y", SHOW_IN_LIST: "Y", EDIT_IN_LIST: "Y",
+      EDIT_FORM_LABEL: label, LIST_COLUMN_LABEL: label, LIST_FILTER_LABEL: label,
     },
   });
   return { name, created: true };
@@ -171,6 +134,13 @@ async function findRoot(env) {
   return String(main.ID || main.id);
 }
 
+async function ensureParkTree(env, parksFolderId, parks) {
+  for (const park of parks) {
+    const parkId = await ensureFolder(env, parksFolderId, park);
+    for (const sub of PARK_SUBFOLDERS) await ensureFolder(env, parkId, sub);
+  }
+}
+
 async function ensureTransportTree(env) {
   const root = await findRoot(env);
   const companies = ["01 ИНТЕРФОРТУМ", "02 АМИДИ ГРУПП"];
@@ -179,17 +149,13 @@ async function ensureTransportTree(env) {
     const companyId = await ensureFolder(env, root, company);
     const transportId = await ensureFolder(env, companyId, "03 ПЕРЕВОЗКИ");
     const names = [
-      "00 РЕЕСТР ПЕРЕВОЗОК",
-      "01 ЗАЯВКИ",
-      "02 ПАРКИ",
-      "03 РЕЙСЫ",
-      "04 ДОКУМЕНТЫ — АКТЫ, УПД, ТТН",
-      "05 ОПЛАТЫ ПАРКАМ",
-      "06 СВЕРКИ ПО ПАРКАМ",
-      "99 АРХИВ ЗАКРЫТЫХ",
+      "00 РЕЕСТР ПЕРЕВОЗОК", "01 ЗАЯВКИ", "02 ПАРКИ", "03 РЕЙСЫ",
+      "04 ДОКУМЕНТЫ — АКТЫ, УПД, ТТН", "05 ОПЛАТЫ ПАРКАМ", "06 СВЕРКИ ПО ПАРКАМ", "99 АРХИВ ЗАКРЫТЫХ",
     ];
     const folders = [];
     for (const name of names) folders.push({ name, id: await ensureFolder(env, transportId, name) });
+    const parksFolder = folders.find(x => x.name === "02 ПАРКИ");
+    if (company === "01 ИНТЕРФОРТУМ" && parksFolder) await ensureParkTree(env, parksFolder.id, INTERFORTUM_PARKS);
     result.push({ company, transportId, folders });
   }
   return result;
@@ -202,7 +168,7 @@ async function ensureTransportSetup(env) {
   const afterEnums = await listUserFields(env);
   for (const def of TRANSPORT_FIELDS) changes.push(await ensureField(env, def, afterEnums));
   const tree = await ensureTransportTree(env);
-  return { ok: true, version: VERSION, fieldCount: ENUM_FIELDS.length + TRANSPORT_FIELDS.length, changes, treeCount: tree.length };
+  return { ok: true, version: VERSION, fieldCount: ENUM_FIELDS.length + TRANSPORT_FIELDS.length, changes, treeCount: tree.length, parkCount: INTERFORTUM_PARKS.length };
 }
 
 export default {
@@ -210,18 +176,12 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/bitrix/health") {
       let setupOk = false;
-      try {
-        await ensureTransportSetup(env);
-        setupOk = true;
-      } catch {
-        setupOk = false;
-      }
+      try { await ensureTransportSetup(env); setupOk = true; } catch { setupOk = false; }
       try {
         const response = await currentWorker.fetch(request, env, ctx);
         const payload = await response.clone().json().catch(() => null);
         return Response.json({ ok: Boolean(response.ok && payload?.ok), version: VERSION, transportConfigured: setupOk }, {
-          status: response.ok ? 200 : 503,
-          headers: { "Cache-Control": "no-store" },
+          status: response.ok ? 200 : 503, headers: { "Cache-Control": "no-store" },
         });
       } catch {
         return Response.json({ ok: false, version: VERSION, transportConfigured: setupOk }, { status: 503, headers: { "Cache-Control": "no-store" } });
