@@ -1,0 +1,34 @@
+name: Verify Bitrix connection
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-bitrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wait for Cloudflare and verify Bitrix webhook
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 24); do
+            CODE="$(curl -sS -o /tmp/bitrix.txt -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/bitrix/health" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/bitrix.txt 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] \
+              && grep -q '"version":"worker-v78-bitrix-bridge"' /tmp/bitrix.txt \
+              && grep -q '"configured":true' /tmp/bitrix.txt \
+              && grep -q '"connected":true' /tmp/bitrix.txt; then
+              echo 'BITRIX_CONNECTION_READY'
+              exit 0
+            fi
+            sleep 12
+          done
+          echo 'BITRIX_CONNECTION_NOT_READY'
+          exit 1
