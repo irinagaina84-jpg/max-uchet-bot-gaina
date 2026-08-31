@@ -1,0 +1,29 @@
+name: Repair Min Wei CRM fields once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Repair and verify existing Bitrix company fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev/bitrix/fix-minwei-fields'
+          for i in $(seq 1 24); do
+            CODE="$(curl -sS -o /tmp/result.json -w '%{http_code}' --connect-timeout 8 --max-time 30 "$URL" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/result.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q '"roleReady":true' /tmp/result.json && grep -q 'worker-v117-minwei-field-repair' /tmp/result.json; then
+              echo 'MIN_WEI_FIELDS_REPAIRED'
+              exit 0
+            fi
+            sleep 8
+          done
+          exit 1
