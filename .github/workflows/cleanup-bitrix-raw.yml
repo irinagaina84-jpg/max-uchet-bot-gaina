@@ -1,0 +1,35 @@
+name: Clean raw files from Bitrix
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for final-files-only policy and clean raw files
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
+          for i in $(seq 1 30); do
+            CODE="$(curl -sS -o /tmp/status.json -w '%{http_code}' --connect-timeout 10 --max-time 30 "$BASE/bitrix/final-files-only/status" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/status.json 2>/dev/null || true)"
+            if [ "$CODE" = "200" ] && grep -q 'worker-v84-final-files-only' /tmp/status.json; then
+              break
+            fi
+            sleep 10
+          done
+          grep -q 'worker-v84-final-files-only' /tmp/status.json
+          CLEAN_CODE="$(curl -sS -o /tmp/cleanup.json -w '%{http_code}' --connect-timeout 10 --max-time 90 "$BASE/bitrix/cleanup-raw" || true)"
+          echo "cleanup_code=$CLEAN_CODE"
+          cat /tmp/cleanup.json
+          test "$CLEAN_CODE" = "200"
+          grep -q '"ok":true' /tmp/cleanup.json
+          echo 'BITRIX_RAW_CLEANUP_DONE'
