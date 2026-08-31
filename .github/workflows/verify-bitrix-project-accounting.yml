@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - name: Wait for project accounting setup
+      - name: Wait for corrected project accounting setup
         shell: bash
         run: |
           set -euo pipefail
@@ -22,7 +22,7 @@ jobs:
             CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 120 "$BASE/bitrix/health" || true)"
             echo "attempt=$i code=$CODE body=$(cat /tmp/health.json 2>/dev/null || true)"
             if [ "$CODE" = "200" ] \
-              && grep -q 'worker-v98-bitrix-project-accounting' /tmp/health.json \
+              && grep -q 'worker-v99-bitrix-projects-corrected' /tmp/health.json \
               && grep -q '"projectAccountingConfigured":true' /tmp/health.json; then
               echo 'BITRIX_PROJECT_ACCOUNTING_READY'
               exit 0
