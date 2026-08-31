@@ -13,22 +13,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: Wait for clients, orders and payment boards
+      - name: Wait for deploy, then configure clients and boards once
         shell: bash
         run: |
           set -euo pipefail
           BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 30); do
-            CODE="$(curl -sS -o /tmp/health.json -w '%{http_code}' --connect-timeout 10 --max-time 60 "$BASE/bitrix/health" || true)"
-            echo "attempt=$i code=$CODE body=$(cat /tmp/health.json 2>/dev/null || true)"
+          for i in $(seq 1 24); do
+            CODE="$(curl -sS -o /tmp/result.json -w '%{http_code}' --connect-timeout 10 --max-time 180 "$BASE/bitrix/crm-boards" || true)"
+            echo "attempt=$i code=$CODE body=$(cat /tmp/result.json 2>/dev/null || true)"
             if [ "$CODE" = "200" ] \
-              && grep -q 'worker-v102-bitrix-crm-boards' /tmp/health.json \
-              && grep -q '"clientsReady":true' /tmp/health.json \
-              && grep -q '"ordersBoardReady":true' /tmp/health.json \
-              && grep -q '"paymentsBoardReady":true' /tmp/health.json; then
+              && grep -q 'worker-v102-bitrix-crm-boards' /tmp/result.json \
+              && grep -q '"clientsReady":true' /tmp/result.json \
+              && grep -q '"ordersBoardReady":true' /tmp/result.json \
+              && grep -q '"paymentsBoardReady":true' /tmp/result.json; then
               echo 'BITRIX_CRM_BOARDS_READY'
               exit 0
             fi
-            sleep 8
+            sleep 10
           done
           exit 1
