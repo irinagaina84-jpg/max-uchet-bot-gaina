@@ -1,8 +1,6 @@
 name: Setup Min Wei company
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,20 +9,6 @@ permissions:
 jobs:
   setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
     steps:
-      - name: Wait and create Min Wei company
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE='https://max-uchet-bot-gaina.irina-gaina-84-036.workers.dev'
-          for i in $(seq 1 24); do
-            CODE="$(curl -sS -o /tmp/result.json -w '%{http_code}' --connect-timeout 5 --max-time 25 "$BASE/bitrix/setup-minwei-company" || true)"
-            echo "attempt=$i code=$CODE body=$(cat /tmp/result.json 2>/dev/null || true)"
-            if [ "$CODE" = "200" ] && grep -q '"ok":true' /tmp/result.json && grep -q 'worker-v110-minwei-company' /tmp/result.json; then
-              echo 'MIN_WEI_COMPANY_READY'
-              exit 0
-            fi
-            sleep 8
-          done
-          exit 1
+      - name: Legacy setup disabled
+        run: echo 'Legacy Min Wei company setup is manual-only; current importer manages CRM idempotently.'
