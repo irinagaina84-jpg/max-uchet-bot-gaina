@@ -1,3 +1,4 @@
 Trigger Cloudflare Git deployment after fixing Build command.
 Timestamp: 2026-08-26
 Retry: 2026-09-17 — start MAX accounting bot container.
+Retry 2: 2026-09-17 — requested by owner.
