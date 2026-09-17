@@ -2,12 +2,19 @@ name: Build current MAX bot
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-current.yml'
 
 permissions:
   contents: read
 
 jobs:
-  disabled:
+  docker-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - run: echo "Manual build only"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build MAX bot container
+        run: docker build --progress=plain -t max-uchet-bot-gaina:test .
